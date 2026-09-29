@@ -1,0 +1,419 @@
+# google-go-best-practices: tastes adapted from the Google Go Style Guide,
+# "Best Practices".
+#
+# Source: https://google.github.io/styleguide/go/best-practices (by Google,
+# licensed under CC BY 3.0, https://creativecommons.org/licenses/by/3.0/).
+# The rules below summarize and adapt best-practice sections that can be
+# judged from a single function; they are not the original text. Guidance
+# about package layout and size, imports, util packages, interface ownership,
+# command-line interfaces, and TestMain is left out because it cannot be
+# judged from one function.
+#
+# Every taste is judged per function. A function that contains nothing the
+# rule applies to is rated at the best level, and the exceptions allowed by
+# the guide are spelled out so that idiomatic code is not penalized. Tastes
+# named test-* apply only to test functions and test helpers; every other
+# function complies with them.
+#
+# Rules whose violations lead to bugs, such as accidental shadowing, errors
+# distinguished by their text, swallowed panics, global mutable state, and
+# t.Fatal called from another goroutine, have severity fail. Rules about
+# naming, readability, documentation, and test style have severity warning,
+# so they are reported without failing the check.
+version: 1
+tastes:
+  # Best practices: Function and method names
+  - id: function-names
+    description: |
+      Rule (Google Go Style Guide, "Function and method names"): the name of this function or
+      method does not repeat information that is already clear at the call site: the types of
+      its inputs and outputs (when there is no collision), the receiver type for methods
+      (`(c *Config) WriteTo`, not `WriteConfigTo`), the names of its parameters
+      (`Override(dest, source)`, not `OverrideFirstWithSecond`), or whether a value is a
+      pointer. Functions that return something have noun-like names without a Get prefix,
+      and functions that do something have verb-like names.
+      Extra words are fine to disambiguate similar functions (e.g. WriteTextTo and
+      WriteBinaryTo, or ParseInt and ParseInt64). The package name is not visible, so judge
+      repetition against the receiver, parameters, and results only.
+    levels:
+      - The name repeats the receiver type, parameter names, or result types in a way that is clearly redundant at the call site.
+      - The name contains one redundant word, or a noun or verb form that does not match what the function does.
+      - The name is free of redundant words and fits what the function does, or it is too short to repeat anything so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Best practices: Shadowing
+  - id: shadowing
+    description: |
+      Rule (Google Go Style Guide, "Shadowing"): the function does not accidentally shadow a
+      variable by declaring it with `:=` in an inner scope when code after that scope relies
+      on the new value. The classic bug is
+      `if cond { ctx, cancel := context.WithTimeout(ctx, d); defer cancel() }`, after which
+      `ctx` again refers to the original context; the fix is to declare `cancel` separately
+      and assign with `=`. The same applies to `err` and other outer variables updated in an
+      if, for, or switch block.
+      Reusing a name with `:=` in the same scope ("stomping") is fine when the old value is
+      no longer needed, and intentional shadowing in a small block is fine when it is clear.
+      Naming a local variable after a standard package (e.g. `url`) is only a readability
+      concern and is not judged here, unless the function then needs the hidden package.
+      If the function shadows nothing, it complies.
+    levels:
+      - The function shadows an outer variable in an inner block and the code after the block uses the stale outer value.
+      - The function shadows an outer variable in an inner block and later code does not use it today, but an easy future change would read the stale value.
+      - No variable is shadowed in a misleading way, or there are no inner declarations so the rule does not apply.
+    threshold: 0.7
+    severity: fail
+
+  # Best practices: Error structure
+  - id: error-structure
+    description: |
+      Rule (Google Go Style Guide, "Error structure"): the function does not distinguish
+      errors by their text, such as comparing err.Error() with a string or using
+      strings.Contains(err.Error(), "not found") or regular expressions on messages. Callers
+      interrogate errors programmatically: sentinel values compared with == or errors.Is,
+      error types matched with errors.As, or structured fields such as a status code.
+      Only this function is visible, so judge the errors it inspects; how its own errors are
+      used by callers is out of scope.
+      In test functions and test helpers, checking that an error message produced by the
+      package under test contains some text (e.g. a parameter name) is allowed; how tests
+      check errors is judged by other rules, so such checks comply here.
+      If the function does not inspect errors, it complies.
+    levels:
+      - The function decides how to handle an error by matching its message text.
+      - The function inspects an error structurally but also relies on its text for one decision, such as a prefix check on err.Error().
+      - Errors are inspected with errors.Is, errors.As, or structured fields, or the function does not distinguish errors or is a test checking messages so the rule does not apply.
+    threshold: 0.7
+    severity: fail
+
+  # Best practices: Adding information to errors, Placement of %w in errors
+  - id: error-annotation
+    description: |
+      Rule (Google Go Style Guide, "Adding information to errors" and "Placement of %w in
+      errors"): when the function adds context to an error, the context adds new, relevant
+      information that the underlying error does not already carry (e.g. os errors already
+      include the path), and an annotation is not added when its only purpose is to say that
+      something failed (e.g. `fmt.Errorf("failed: %v", err)`).
+      The choice between %w and %v is deliberate: %w when callers should be able to inspect
+      the cause with errors.Is/As, %v at system boundaries or when translating to a
+      different error space. %w is placed at the end in the form `"...: %w"`, except when
+      wrapping a sentinel error that categorizes the failure, which may come first
+      (`"%w: ..."`).
+      Returning an error unchanged is fine when there is nothing to add. If the function does
+      not annotate errors, it complies.
+    levels:
+      - The function annotates errors with redundant or content-free context, or places %w in the middle of the message.
+      - The annotations are mostly useful, but one duplicates information or uses %v/%w without an evident reason.
+      - Annotations add non-redundant context with %w at the end or a leading sentinel, or the function does not annotate errors so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Best practices: Logging errors
+  - id: error-logging
+    description: |
+      Rule (Google Go Style Guide, "Logging errors"): when the function logs errors, it does
+      so deliberately. It does not log an error that it also returns, because the caller may
+      log it again or decide to handle it differently. Log messages clearly say what went
+      wrong and include information that helps diagnose it. Sensitive end-user data (PII) is
+      not written to logs, and ERROR-level logging is reserved for actionable problems rather
+      than used for anything that merely feels serious.
+      Logging an error and then handling it without returning it (e.g. degrading
+      gracefully) is fine. If the function does not log, it complies.
+    levels:
+      - The function logs errors that it also returns, or logs sensitive user data.
+      - The function logs errors appropriately, but one message lacks context or uses the error level for something that is not actionable.
+      - Errors are either logged and handled or returned without logging, or the function does not log so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Best practices: Program checks and panics, When to panic
+  - id: panic-and-recover
+    description: |
+      Rule (Google Go Style Guide, "Program checks and panics" and "When to panic"): the
+      function does not recover panics just to avoid crashes, because the program may be left
+      in a corrupted state; unexpected panics should crash and be fixed.
+      Panics are acceptable for API misuse that code review and tests should catch, for code
+      the compiler cannot see as unreachable (e.g. after log.Fatal in a switch), in init or
+      Must helpers, and as an internal control-flow mechanism when a matching deferred
+      recover at the package's API boundary converts only the package's own panic values into
+      a returned error and re-panics anything else. Such panics must never escape the
+      package.
+      Only this function body is visible, not its callers. A function whose own name starts
+      with "Must" or "must" follows the convention for initialization helpers, so assume it is
+      used that way and treat its panic as allowed.
+      Libraries prefer returning an error to aborting the program: configuration and
+      initialization errors are propagated up to main, and log.Fatal or os.Exit is not called
+      deep inside library code for an error the caller could handle. main, init, and tests
+      may abort.
+      If the function neither panics, recovers, nor aborts the program, it complies.
+    levels:
+      - The function recovers every panic to keep running, lets an internal panic escape to callers, or calls log.Fatal or os.Exit outside main for an error the caller could handle.
+      - The function uses recover in a controlled way but does not re-panic values that are not its own, or it aborts the program for an initialization error outside main or init.
+      - Panics, recovers, and program exits follow the allowed patterns, or the function does none of them so the rule does not apply.
+    threshold: 0.7
+    severity: fail
+
+  # Best practices: Variable declarations (Initialization, Declaring variables
+  # with zero values, Composite literals, Size hints)
+  - id: var-declarations
+    description: |
+      Rule (Google Go Style Guide, "Variable declarations"): local variables are declared in
+      the conventional form. A variable initialized with a non-zero value uses `:=`
+      (`i := 42`, not `var i = 42`). A variable that starts as an empty value ready for later
+      use (such as an output for unmarshaling) uses the zero-value form `var x T`, not an
+      explicit literal such as `T{}`, `[4]byte{0, 0, 0, 0}`, or `[]int(nil)`. A composite
+      literal is used when the initial elements are known. A pointer to a zero value may use
+      new(T) or &T{}.
+      Size hints (make with a length or capacity) are used when the final size is known, not
+      with arbitrary guesses; large speculative preallocation is a violation.
+      If the function declares no local variables, it complies.
+    levels:
+      - The function declares several variables in unconventional forms, such as var with a non-zero initializer or explicit empty literals, or preallocates with arbitrary sizes.
+      - One declaration uses a less conventional form than needed.
+      - Declarations use := for values, var for zero values, and literals for known contents, or there are none so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Best practices: Channel direction
+  - id: channel-direction
+    description: |
+      Rule (Google Go Style Guide, "Channel direction"): channel parameters and results of this
+      function specify their direction where possible: `<-chan T` for a channel the function
+      only receives from, `chan<- T` for one it only sends to. This lets the compiler catch
+      mistakes such as closing a receive-only channel and conveys ownership.
+      A bidirectional `chan T` is fine when the function both sends and receives, or when it
+      creates the channel and returns it to be used in both directions.
+      If the function has no channel parameters or results, it complies.
+    levels:
+      - The function takes or returns bidirectional channels that it uses in only one direction.
+      - One channel parameter or result could specify a direction but does not.
+      - Channel parameters and results specify their direction where possible, or there are none so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Best practices: Function argument lists, Option structure, Variadic options
+  - id: function-arguments
+    description: |
+      Rule (Google Go Style Guide, "Function argument lists"): the signature of this function
+      does not grow so long that the role of each parameter becomes unclear. When a function
+      requires many inputs, or has adjacent parameters of the same type that are easy to swap
+      (especially several bools or ints), some of them are grouped into an option struct
+      passed as the last argument, or configured with variadic options.
+      A context.Context stays a separate first parameter and is never put in an option
+      struct. Exported functions are held to a higher standard than unexported ones.
+      Signatures with a few distinct parameters comply.
+    levels:
+      - The function takes many parameters, or several adjacent bool or numeric parameters that callers could easily swap.
+      - The function takes a somewhat long parameter list that an option struct would make clearer.
+      - Each parameter's role is clear at the call site, or the function takes only a few distinct parameters so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Best practices: Documentation conventions
+  - id: documentation
+    description: |
+      Rule (Google Go Style Guide, "Documentation conventions"): the doc comment of this
+      function, if any, documents what callers need and omits what is implied.
+      It explains parameters that are error-prone or non-obvious (not every parameter),
+      cleanup the caller must perform (e.g. "call Stop to release resources"), significant
+      sentinel errors or error types it returns, context behavior that differs from the
+      default (e.g. returns an error other than ctx.Err() on cancellation), and concurrency
+      guarantees when it is unclear whether the operation mutates state.
+      It does not restate implied behavior, such as that cancelling the context interrupts the
+      function, or that read-only operations are safe for concurrent use.
+      Judge only information that is visible in the function: e.g. a function that returns a
+      resource needing Close, or starts something needing Stop, but whose doc omits it.
+      If the function has no doc comment and is unexported and obvious, it complies.
+    levels:
+      - The doc comment omits a cleanup requirement or non-obvious behavior visible in the code, or is mostly boilerplate restating implied behavior.
+      - The doc comment is useful, but misses one non-obvious detail or restates one implied fact.
+      - The doc comment documents what callers need without restating implied behavior, or the function needs no documentation so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Best practices: Signal boosting
+  - id: signal-boosting
+    description: |
+      Rule (Google Go Style Guide, "Signal boosting"): when a line looks like a common idiom
+      but actually differs from it, a comment draws attention to the difference. The typical
+      case is `if err == nil {` where `if err != nil {` is expected, which gets a comment
+      such as `// if NO error`. Other examples: a loop that deliberately starts at index 1, a
+      comparison with the operands in an unusual order, or ignoring an error in a place where
+      it is normally checked.
+      In tests, `err == nil` as the failure condition of a check that expects an error (e.g.
+      `if _, err := f(bad); err == nil { t.Error(...) }`) is the common idiom and needs no
+      comment.
+      If the function contains no deceptive near-idiom, it complies.
+    levels:
+      - The function contains a line that looks like a common idiom but behaves differently, such as err == nil, with no comment.
+      - The function has a subtle deviation from an idiom whose comment is unclear or placed far away.
+      - Every deviation from a common idiom is called out with a comment, or there is none so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Best practices: String concatenation
+  - id: string-concatenation
+    description: |
+      Rule (Google Go Style Guide, "String concatenation"): the function builds strings with the
+      tool that fits: `+` for concatenating a few strings; fmt.Sprintf when formatting values
+      into a complex string, instead of chaining many `+` with strconv calls; strings.Builder
+      when building a string piecemeal, especially in a loop, instead of repeated `+=` or
+      Sprintf; fmt.Fprintf to write formatted output directly to an io.Writer, instead of
+      building a temporary string with Sprintf; and backquoted raw strings for constant
+      multi-line text, instead of concatenating lines with "\n".
+      If the function does not build strings, it complies.
+    levels:
+      - The function builds strings with a poorly suited tool, such as += in a loop or a long chain of + and strconv calls.
+      - The function mostly uses suitable tools, but one string is built less clearly or efficiently than it could be.
+      - Strings are built with the suitable tool for each case, or the function builds no strings so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Best practices: Global state
+  - id: global-state
+    description: |
+      Rule (Google Go Style Guide, "Global state"): the function does not rely on or mutate
+      package-level mutable state that makes independent callers or tests interact, such as a
+      registry that is written after initialization, a callback list, a lazily created
+      singleton client, or a mutable configuration variable. Instead the state lives in an
+      instance (e.g. a struct created by a constructor) and dependencies are passed as
+      parameters, fields, or constructor arguments.
+      Allowed: package-level values that are logically constant, including values computed
+      once at initialization and never mutated afterwards (e.g. precompiled regexps, lookup
+      tables, embedded files); caches that do not change observable behavior; state that has
+      no expectation of predictable behavior (e.g. math/rand); and main, which wires things
+      together. Flags are read in main or passed in, not read deep inside a library.
+      Also allowed, like main: init functions that only wire the program together, such as
+      adding cobra commands and flags to a package-level command or calling a registration
+      function; and registries that are written only during program initialization and are
+      read-only afterwards, like database/sql drivers. For such an init-only registry, both
+      the registration function (documented as called from init) and the functions that
+      only read the registry comply. Treat a package-level registry as init-only when the
+      function's doc comment says it is written only during initialization. An entrypoint
+      called from main that only runs a package-level command wired in init (e.g. Execute
+      calling rootCmd.Execute()) also complies.
+      Judge only identifiers that are visibly package-level variables (declared outside any
+      function and referenced by name here). Values returned by function calls, parameters,
+      receiver fields, and local variables are not package-level state, even when the
+      function modifies them, and calling a package-level function (e.g. Names()) is not
+      itself access to package-level state.
+      If the function touches no package-level mutable state, it complies.
+    levels:
+      - The function registers into, mutates, or depends on package-level mutable state that callers cannot control.
+      - The function reads a package-level variable by name that is visibly reassigned or mutated in this function body or is documented as settable, such as a configuration variable.
+      - State is passed in or held by an instance, the function only wires the program together at initialization or writes to or reads an init-only registry, or it touches no package-level mutable state so the rule does not apply.
+    threshold: 0.7
+    severity: fail
+
+  # Best practices: Leave testing to the Test function
+  - id: test-validation-in-test
+    description: |
+      Rule (Google Go Style Guide, "Leave testing to the Test function"): this rule applies only
+      to test functions (named Test*, Benchmark*, or Fuzz*) and to functions that take a
+      *testing.T, *testing.B, *testing.F, or testing.TB. Every other function complies.
+      Validation and failure reporting happen in the Test function itself. A shared
+      validation function does not take a testing.T to fail the test; it returns a value or
+      an error (or provides a cmp.Option) that the Test function uses to decide whether to
+      fail and to write a useful message. Functions that take a testing.T are limited to setup
+      and cleanup (test helpers), where failures mean the environment is broken.
+      Inlining repetitive validation or using a table-driven test is preferred over an
+      assertion helper.
+    levels:
+      - The function is an assertion helper that takes a testing.T and fails the test when values differ.
+      - The test delegates one check to a helper that fails the test itself instead of returning a result.
+      - Validation and failure reporting stay in the Test function, or this is not a test function so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Best practices: t.Error vs. t.Fatal
+  - id: test-fatal-usage
+    description: |
+      Rule (Google Go Style Guide, "t.Error vs. t.Fatal"): this rule applies only to test
+      functions and test helpers (see test-validation-in-test). Every other function complies.
+      t.Fatal is used when a piece of setup fails and the rest of the test cannot run,
+      including setup before a table-driven loop. For a failure that affects a single table
+      entry: without subtests, the test uses t.Error followed by continue so that other
+      entries still run; inside a t.Run subtest, t.Fatal is appropriate because it ends only
+      that subtest.
+      Violation: t.Fatal inside a table loop that does not use t.Run, which stops all
+      remaining entries.
+    levels:
+      - The test calls t.Fatal for a per-entry failure inside a table loop without subtests.
+      - The test uses t.Fatal where t.Error would let the test continue meaningfully, outside a table loop.
+      - t.Fatal is used only for setup or inside subtests, or this is not a test function so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Best practices: Don't call t.Fatal from separate goroutines
+  - id: test-fatal-goroutine
+    description: |
+      Rule (Google Go Style Guide, "Don't call t.Fatal from separate goroutines"): this rule
+      applies only to test functions and test helpers (see test-validation-in-test). Every
+      other function complies.
+      t.FailNow, t.Fatal, t.Fatalf, t.SkipNow, and t.Skip are called only from the goroutine
+      running the test or subtest, never from inside a goroutine the test starts (e.g. inside
+      `go func() { ... }()` or errgroup.Go). Such goroutines report failures with t.Error
+      and return. Calling t.Parallel does not make t.Fatal unsafe.
+      Also a violation: calling a helper whose name or visible use shows that it fails the
+      test (e.g. mustXYZ(t, ...), requireNoError(t, err)) from a started goroutine. Helpers
+      whose behavior is not visible are not judged.
+      If the test starts no goroutine, it complies.
+    levels:
+      - The test calls t.Fatal, t.FailNow, or a helper that does so from inside a goroutine it started.
+      - A goroutine the test starts calls t.Skip or t.SkipNow, or passes t to a Must-style helper.
+      - Goroutines report failures with t.Error, or the test starts no goroutine so the rule does not apply.
+    threshold: 0.7
+    severity: fail
+
+  # Best practices: Error handling in test helpers
+  - id: test-helper-errors
+    description: |
+      Rule (Google Go Style Guide, "Error handling in test helpers"): this rule applies only to
+      test helpers, i.e. functions that take a *testing.T, *testing.B, *testing.F, or
+      testing.TB and are not themselves Test*, Benchmark*, or Fuzz* functions. Every other
+      function complies.
+      A setup helper whose operation fails calls t.Fatal (or t.Fatalf) with a message that
+      says what failed and why, rather than returning the error for every caller to check. It
+      calls t.Helper() so that the failure points at the caller's line, and may register
+      cleanup with t.Cleanup. A helper that can never fail the test does not take a testing.T
+      at all.
+    levels:
+      - The helper takes a testing.T but returns setup errors to its callers, or fails without saying what went wrong.
+      - The helper fails with t.Fatal, but does not call t.Helper() or its message lacks context.
+      - The helper calls t.Helper() and fails with a descriptive t.Fatal, or this is not a test helper so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Best practices: Use field names in struct literals
+  - id: test-table-field-names
+    description: |
+      Rule (Google Go Style Guide, "Use field names in struct literals"): this rule applies only
+      to test functions (named Test*, Benchmark*, or Fuzz*). Every other function complies.
+      In table-driven tests, the test case struct literals specify field names, especially
+      when the table spans many lines, when adjacent fields have the same type, or when some
+      fields are omitted because they have their zero value.
+      Very small tables with one or two obviously ordered fields may omit names.
+      If the test has no table of struct literals, it complies.
+    levels:
+      - The table's test cases are positional struct literals with several fields, some of the same type.
+      - The table mostly uses field names, but some entries are positional or the table is small but ambiguous.
+      - Test cases use field names, or the table is trivially small or absent, so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Best practices: Keep setup code scoped to specific tests
+  - id: test-setup-scope
+    description: |
+      Rule (Google Go Style Guide, "Keep setup code scoped to specific tests"): this rule
+      applies only to test functions (named Test*, Benchmark*, or Fuzz*), and to init
+      functions in test code. Every other function complies.
+      Expensive or failure-prone setup, such as loading a dataset or starting a server, is
+      done by calling a helper in the tests that need it, not in init or by populating
+      package-level variables that every test in the package pays for. Running a single test
+      with -run should not perform setup that test does not use.
+      If the function performs no shared setup, it complies.
+    levels:
+      - The function performs expensive setup for all tests at package level, such as in init.
+      - The test depends on package-level state prepared elsewhere where calling a helper would be clearer.
+      - Setup is scoped to the tests that need it, or this is not a test function so the rule does not apply.
+    threshold: 0.7
+    severity: warning

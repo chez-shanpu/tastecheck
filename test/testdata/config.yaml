@@ -1,0 +1,12 @@
+version: 1
+rulesets:
+  - builtin: uber-go
+    overrides:
+      naked-parameters:
+        disabled: true
+      error-wrap:
+        threshold: 0.8
+  - builtin: google-go-guide
+    disabled: true
+evaluator:
+  max_retries: 1

@@ -1,0 +1,42 @@
+# Example tastecheck configuration.
+# Copy this file to .tastecheck.yaml and edit it. Without .tastecheck.yaml,
+# every builtin ruleset is used with no overrides.
+
+# Schema version. Only 1 is supported.
+version: 1
+
+# Rulesets to evaluate. Every builtin ruleset (uber-go, google-go-guide,
+# google-go-decisions, google-go-best-practices) is used unless disabled here,
+# so list a builtin only to override or disable it.
+# Run `tastecheck ruleset show <name>` to see the taste IDs of a ruleset.
+rulesets:
+  - builtin: uber-go
+    # Adjusts tastes of this ruleset, keyed by taste ID. Overriding an ID the
+    # ruleset does not define is an error.
+    overrides:
+      goroutine-lifecycle:
+        disabled: true      # skip this taste
+      error-wrap:
+        threshold: 0.8      # within [0, 1]
+      reduce-nesting:
+        severity: fail      # fail or warning
+
+  - builtin: google-go-guide
+    disabled: true          # exclude this builtin ruleset
+
+  # A ruleset file of your own. Relative paths resolve against the directory
+  # of this config file.
+  # - path: ./rules/team.yaml
+  #   name: team            # optional; defaults to the file name without extension
+  #   overrides:
+  #     error-wrap:         # a different taste from uber-go/error-wrap
+  #       threshold: 0.9
+
+# Evaluator settings. All fields are optional, and explicitly given command
+# line flags take precedence. The values below are the defaults.
+evaluator:
+  backend: typesafeai
+  model: jev-latest
+  concurrency: 4            # functions evaluated in parallel
+  max_retries: 3            # retries for transient evaluator errors; 0 disables
+  min_confidence: 0         # ignore below-threshold findings with lower confidence; 0 disables

@@ -1,0 +1,6 @@
+version: 1
+rulesets:
+  - builtin: uber-go
+    overrides:
+      no-such-taste:
+        disabled: true

@@ -1,0 +1,203 @@
+# uber-go: tastes adapted from the Uber Go Style Guide.
+#
+# Source: https://github.com/uber-go/guide (Copyright Uber Technologies, Inc.,
+# licensed under the Apache License 2.0). The rules below summarize and adapt
+# guideline sections that can be judged from a single function body; rules
+# that are about type declarations, naming, imports, or formatting are left
+# to linters.
+#
+# Every taste is judged per function. A function that contains nothing the
+# rule applies to is rated at the best level, and the exceptions allowed by
+# the guide are spelled out so that idiomatic code is not penalized.
+#
+# Rules whose violations lead to bugs, such as lost errors, panics, leaked
+# goroutines or resources, and shared mutable state, have severity fail.
+# Rules about readability have severity warning, so they are reported
+# without failing the check.
+version: 1
+tastes:
+  # Guide: Error Wrapping, Error Types
+  - id: error-wrap
+    description: |
+      Rule (Uber Go Style Guide, "Error Wrapping"): when this function propagates an error
+      returned by another call, it either returns the error as-is or adds succinct context
+      with fmt.Errorf. Context wraps with %w when callers should be able to match the cause
+      (or %v when deliberately hiding it), and avoids phrases like "failed to" or "error:"
+      that pile up as errors propagate, e.g. "new store: %w" instead of "failed to create
+      new store: %w".
+      Returning the original error unchanged is fine when there is no useful context to add,
+      so a plain `return err` is NOT a violation by itself.
+      Violations: error context that uses "failed to"/"error:"-style prefixes, context built
+      in a way that loses the cause (e.g. errors.New(err.Error()) or string concatenation),
+      or discarding a returned error that should be propagated.
+      Judge only this function. If it does not propagate any error, it complies.
+    levels:
+      - The function clearly violates the rule, e.g. it loses the underlying error or wraps errors with "failed to"-style messages.
+      - The function adds context to errors but one message has a minor wording issue, such as a redundant "failed to"-style phrase.
+      - The function returns errors as-is or with succinct context, or it does not propagate any error so the rule does not apply.
+    threshold: 0.7
+    severity: fail
+
+  # Guide: Handle Errors Once
+  - id: error-handle-once
+    description: |
+      Rule (Uber Go Style Guide, "Handle Errors Once"): each error is handled exactly once.
+      The function must not both log an error and return it (wrapped or not), because its
+      callers will handle the returned error as well.
+      Allowed: returning the error (wrapped or verbatim); logging it and degrading gracefully
+      without returning it; matching a specific error with errors.Is/errors.As and handling
+      that case while returning the others.
+      Judge only this function. If it does not handle any error, it complies.
+    levels:
+      - The function logs errors and also returns them, handling the same error twice.
+      - The function mostly handles errors once, but there is an ambiguous case, such as logging extra detail right before returning the error.
+      - Every error is handled exactly once, or the function does not handle any error so the rule does not apply.
+    threshold: 0.7
+    severity: fail
+
+  # Guide: Don't Panic, Exit in Main
+  - id: no-panic-or-exit
+    description: |
+      Rule (Uber Go Style Guide, "Don't Panic" and "Exit in Main"): the function reports
+      failures by returning an error instead of calling panic, and it does not terminate the
+      program with os.Exit or log.Fatal* unless it is the main function.
+      Allowed: panics for truly irrecoverable programmer errors, panics during program
+      initialization, and os.Exit/log.Fatal* inside func main. In tests, t.Fatal is preferred
+      over panic.
+      Only this function body is visible, not its callers. A function whose name starts with
+      "Must" or "must" (like template.Must or regexp.MustCompile) follows the Go convention for
+      helpers used during initialization, so assume it is used that way and treat its panic
+      as allowed.
+      Judge only this function. If it neither panics nor exits, it complies.
+    levels:
+      - The function uses panic for ordinary error handling, or calls os.Exit or log.Fatal outside func main.
+      - The function panics for a condition that callers could reasonably handle, although it is not a Must-style initialization helper.
+      - The function returns errors instead of panicking or exiting, panics only as a Must-style initialization helper, or neither panics nor exits so the rule does not apply.
+    threshold: 0.7
+    severity: fail
+
+  # Guide: Don't fire-and-forget goroutines, Wait for goroutines to exit
+  - id: goroutine-lifecycle
+    description: |
+      Rule (Uber Go Style Guide, "Don't fire-and-forget goroutines"): every goroutine this
+      function starts has a controlled lifetime. It must either stop at a predictable time
+      or have a way to be signaled to stop (e.g. a context, a stop channel), and there must
+      be a way to wait for it to exit (e.g. sync.WaitGroup, errgroup, a done channel).
+      Stopping and waiting may legitimately live elsewhere: a Start method paired with a
+      Stop/Close method, or a constructor that returns a handle the caller shuts down, is
+      compliant when the function sets up the stop signal and the wait mechanism.
+      Judge only goroutines started by this function. If the function starts no goroutine
+      (no `go` statement and no call like errgroup.Go or WaitGroup.Go), it complies.
+    levels:
+      - The function starts a goroutine that cannot be stopped or waited for (fire-and-forget).
+      - The function starts goroutines that can be stopped or waited for, but one of the two is missing or fragile.
+      - Every goroutine the function starts can be stopped and waited for, or the function starts no goroutine so the rule does not apply.
+    threshold: 0.7
+    severity: fail
+
+  # Guide: Defer to Clean Up
+  - id: defer-cleanup
+    description: |
+      Rule (Uber Go Style Guide, "Defer to Clean Up"): resources this function acquires and
+      is responsible for releasing, such as mutex locks, files, network connections,
+      response bodies, tickers, or timers, are released with defer right after they are
+      acquired, instead of manual release calls that are easy to miss on early returns.
+      Releasing is the caller's job when the function returns the resource (e.g. a
+      constructor returning *os.File) or hands it to another owner; that is compliant.
+      Judge only this function. If it acquires nothing that it must release, it complies.
+    levels:
+      - The function releases a lock or resource manually, so an early return or panic can skip the release.
+      - The function mostly uses defer, but one release is manual or deferred later than necessary.
+      - Every lock or resource the function owns is released with defer, or it owns none so the rule does not apply.
+    threshold: 0.7
+    severity: fail
+
+  # Guide: Reduce Nesting, Unnecessary Else
+  - id: reduce-nesting
+    description: |
+      Rule (Uber Go Style Guide, "Reduce Nesting" and "Unnecessary Else"): the function
+      handles error cases and special conditions first and returns early or continues the
+      loop, keeping the main path at a low indentation level. It avoids an else branch after
+      a branch that returns, and avoids setting the same variable in both branches of an
+      if/else when a default value plus a single if would do.
+      Short functions without nested conditionals comply.
+    levels:
+      - The main logic is buried in deeply nested conditionals, or else branches follow returns throughout the function.
+      - The function is mostly flat but has one avoidable nested block or unnecessary else.
+      - The function handles special cases early and keeps nesting minimal, or it has no nested conditionals so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Guide: Handle Type Assertion Failures
+  - id: type-assertion
+    description: |
+      Rule (Uber Go Style Guide, "Handle Type Assertion Failures"): every type assertion in
+      this function uses the two-value "comma ok" form, `v, ok := x.(T)`, and handles the
+      failure case, because the single-value form panics on an unexpected type.
+      Type switches (`switch v := x.(type)`) are always fine.
+      If the function contains no type assertion, it complies.
+    levels:
+      - The function uses a single-value type assertion that can panic on an unexpected type.
+      - The function uses the comma-ok form but ignores or mishandles the failure case.
+      - Every type assertion uses the comma-ok form with the failure handled, or there is no type assertion so the rule does not apply.
+    threshold: 0.7
+    severity: fail
+
+  # Guide: Copy Slices and Maps at Boundaries
+  - id: container-copy
+    description: |
+      Rule (Uber Go Style Guide, "Copy Slices and Maps at Boundaries"): the rule applies to
+      exactly two situations, and nothing else:
+        (1) the function takes a slice or map as a PARAMETER and stores it into state that
+            outlives the call: a field of its receiver, or a package-level variable;
+        (2) the function RETURNS a slice or map that is a field of its receiver or a
+            package-level variable, especially one guarded by a mutex.
+      In those situations it must store or return a copy (e.g. slices.Clone, maps.Clone),
+      otherwise callers can mutate the internal state or race on it.
+      Out of scope, and therefore compliant: slices and maps the function creates, decodes,
+      or parses itself; putting such values, or fields of such values, into a new struct
+      that the function returns; passing slices through to other calls; reading slices
+      without storing them; and slices held by local variables or values that are not the
+      receiver.
+      If neither situation (1) nor (2) occurs in the function, it complies.
+    levels:
+      - The function stores a slice or map parameter into its receiver or a package variable, or returns its receiver's or a package variable's slice or map, without copying.
+      - In situation (1) or (2), the function copies, but only shallowly while the elements themselves are shared mutable state.
+      - The function copies in situations (1) and (2), or neither situation occurs so the rule does not apply.
+    threshold: 0.7
+    severity: fail
+
+  # Guide: Use "time" to handle time
+  - id: time-types
+    description: |
+      Rule (Uber Go Style Guide, "Use time to handle time"): the function represents
+      instants with time.Time and periods with time.Duration, compares and computes them
+      with methods such as Before, Add, and AddDate, and does not pass durations or
+      timestamps around as bare int/float values whose unit is implicit.
+      When an external format forces a plain number or string, the unit is part of the name
+      (e.g. intervalMillis) or timestamps use RFC 3339.
+      If the function does not deal with time, it complies.
+    levels:
+      - The function handles times or durations as bare integers or floats with an implicit unit.
+      - The function mostly uses the time package but has one ambiguous numeric time value.
+      - The function uses time.Time and time.Duration for times and durations, or it does not deal with time so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Guide: Avoid Naked Parameters
+  - id: naked-parameters
+    description: |
+      Rule (Uber Go Style Guide, "Avoid Naked Parameters"): calls made by this function do
+      not pass literal arguments whose meaning is not obvious at the call site, most
+      notably bare true/false (and magic numbers) for parameters such as isLocal or done.
+      Such arguments get a /* name */ comment, or the callee takes a named type or a
+      struct instead of a bool.
+      Arguments whose meaning is obvious from the callee name or the standard library
+      convention (e.g. strconv.FormatInt(n, 10), make([]T, 0, n)) are fine.
+      If the function passes no unclear literal argument, it complies.
+    levels:
+      - The function passes several unexplained bool or numeric literals whose meaning is unclear at the call site.
+      - The function passes one unexplained literal whose meaning is not obvious.
+      - Every literal argument is self-explanatory or annotated, or there is no such argument so the rule does not apply.
+    threshold: 0.7
+    severity: warning
