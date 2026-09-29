@@ -1,0 +1,157 @@
+# google-go-guide: tastes adapted from the Google Go Style Guide, "Guide".
+#
+# Source: https://google.github.io/styleguide/go/guide (by Google, licensed
+# under CC BY 3.0, https://creativecommons.org/licenses/by/3.0/).
+# The rules below summarize and adapt the style principles of the guide so
+# that they can be judged from a single function; they are not the original
+# text. Formatting, MixedCaps, and line length are left to gofmt and linters.
+#
+# Every taste is judged per function. A function that is too small for a
+# principle to matter is rated at the best level, and the tradeoffs allowed
+# by the guide are spelled out so that idiomatic code is not penalized.
+#
+# The style principles are about readability, so every taste has severity
+# warning: a function below the threshold is reported without failing the
+# check.
+version: 1
+tastes:
+  # Guide: Clarity ("What is the code actually doing?")
+  - id: clarity
+    description: |
+      Rule (Google Go Style Guide, "Clarity"): a reader can tell what this function does by
+      reading it from top to bottom, without prior knowledge of the code. Names of variables
+      and helpers describe what they hold or do, related steps are grouped, and long or
+      intricate logic is broken into well-named steps or helper functions.
+      It is more important that code be easy to read than easy to write.
+      Violations: opaque names (e.g. `x2`, `tmp`, `data` for several different values),
+      long unbroken sequences mixing unrelated steps, or tricky expressions whose effect a
+      reader has to reverse-engineer.
+      Short, straightforward functions comply.
+    levels:
+      - The purpose of the function or of large parts of it is hard to work out, because of opaque names or tangled, unstructured logic.
+      - The function is mostly clear, but one step or name requires the reader to stop and reverse-engineer it.
+      - What the function does is clear from reading it top to bottom, or it is too simple for clarity to be an issue so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Guide: Clarity ("Why is the code doing what it does?")
+  - id: comment-why
+    description: |
+      Rule (Google Go Style Guide, "Clarity"): comments in this function explain WHY the code
+      does something when the reason is not obvious, rather than restating WHAT the code
+      already says. Nuances a reader may not know are called out, such as a subtle language
+      behavior, a business rule (e.g. distinguishing a real user from an impersonator), a
+      performance-motivated complexity, or an unexpected type conversion.
+      Violations: comments that merely repeat the code (e.g. `// increment i` above `i++`),
+      comments that contradict the code, or a non-obvious nuance left without any
+      explanation.
+      Not every line needs a comment; self-describing names are preferred over redundant
+      comments. A function with no non-obvious behavior and no redundant comments complies.
+    levels:
+      - The function has comments that contradict or merely restate the code, or leaves a clearly non-obvious nuance completely unexplained.
+      - The comments are mostly useful, but one comment restates the code or one nuance could use a short explanation.
+      - Comments explain the non-obvious reasons and do not restate the code, or the function has nothing non-obvious so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Guide: Simplicity
+  - id: simplicity
+    description: |
+      Rule (Google Go Style Guide, "Simplicity"): the function accomplishes its goal in the
+      simplest way. It is easy to read from top to bottom, does not add unnecessary levels of
+      abstraction or indirection, does not use "clever" tricks, and makes the propagation of
+      values and decisions clear.
+      Complexity is allowed when it is deliberate, for example for performance (such as
+      preallocating and reusing a buffer), and is then accompanied by a comment explaining
+      why.
+      Violations: wrappers, closures, interfaces, or generic helpers that add indirection
+      without benefit; clever one-liners that obscure the logic; undocumented complexity for
+      something whose purpose should be simple.
+      Short, direct functions comply.
+    levels:
+      - The function is needlessly complex, with unnecessary abstraction, indirection, or clever code that obscures a simple purpose.
+      - The function is mostly simple, but one construct is more complex than needed or its complexity is not explained.
+      - The function is as simple as its purpose allows and any deliberate complexity is explained, or it is trivial so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Guide: Least mechanism
+  - id: least-mechanism
+    description: |
+      Rule (Google Go Style Guide, "Least mechanism"): where there are several ways to express
+      the same idea, the function uses the most standard tool that suffices: first a core
+      language construct (channel, slice, map, loop, struct), then the standard library, and
+      only then an extra dependency or custom machinery.
+      Examples: a `map[string]bool` (or `map[T]struct{}`) for a set membership check instead
+      of a set library; overriding a flag-bound variable directly in a test instead of calling
+      flag.Set; a plain loop instead of reflection or a generic framework.
+      More sophisticated machinery is fine when the operation is impossible or overly
+      complicated with the simpler tool.
+      If the function uses only simple, standard constructs, it complies.
+    levels:
+      - The function uses sophisticated machinery, such as reflection, a third-party utility, or a custom framework, where a core construct or the standard library would clearly suffice.
+      - The function mostly uses standard tools, but one spot uses more mechanism than needed.
+      - The function uses the simplest sufficient tool for each task, or it uses only core constructs so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Guide: Concision
+  - id: concision
+    description: |
+      Rule (Google Go Style Guide, "Concision"): the function has a high signal-to-noise ratio.
+      It avoids repetitive code, where nearly identical sections force the reader to compare
+      lines to find the differences, and avoids extraneous syntax. Common idioms are written
+      in their common form, so that the reader recognizes them at a glance.
+      When the code looks like a common idiom but is subtly different (e.g.
+      `if err == nil` instead of `if err != nil`), a comment calls attention to it.
+      Repetition that is factored into a loop, table, or helper is compliant; a small amount
+      of repetition that keeps the code more readable is also fine.
+      If the function has no repetitive sections or noise, it complies.
+    levels:
+      - The function contains several nearly identical blocks or a lot of extraneous syntax that hides the important details.
+      - The function is mostly concise, but one repeated block or one subtle deviation from an idiom is left without factoring or a comment.
+      - The function is concise and its important details stand out, or it is too short for repetition to occur so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Guide: Maintainability
+  - id: hidden-details
+    description: |
+      Rule (Google Go Style Guide, "Maintainability"): the function does not hide important
+      details in places that are easy to overlook, so that a future maintainer can change it
+      correctly.
+      Examples of hidden details: assigning with `=` instead of `:=` inside an if statement
+      (e.g. `if user, err = db.UserByID(id); err != nil`), where one character changes the
+      meaning; a `!` buried in the middle of a long boolean expression; a critical edge case
+      handled silently inside a helper call or a dense expression.
+      Such code is compliant when it is written more explicitly (e.g. separate statements,
+      named intermediate booleans) or when a comment calls attention to the important
+      behavior.
+      If the function has no such easy-to-miss detail, it complies.
+    levels:
+      - The function relies on an easy-to-miss detail, such as an `=` versus `:=` in a condition or a buried negation, that changes behavior without any comment.
+      - The function has one somewhat subtle detail that would be clearer written explicitly or commented.
+      - Important details are explicit or called out with comments, or the function has no easy-to-miss detail so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Guide: Consistency, Naming
+  - id: local-consistency
+    description: |
+      Rule (Google Go Style Guide, "Consistency" and "Naming"): within this function, the same
+      concept has the same name and the same problem is approached the same way. Names do not
+      repeat concepts that are already clear from the context (such as the function or
+      receiver name).
+      Violations: one value referred to by several names (e.g. `user`, `u`, and `account` for
+      the same thing); the same kind of error handled in different styles in different places
+      (e.g. some wrapped with %w, some with %v, some returned bare, without a reason);
+      mixing two approaches to the same task (e.g. building strings both with + and with a
+      Builder for the same output).
+      Only this function is visible, so judge consistency within it. Short functions with a
+      single approach comply.
+    levels:
+      - The function refers to the same concept by different names or solves the same problem in several inconsistent ways.
+      - The function is mostly consistent, but one name or one approach deviates without a reason.
+      - Names and approaches are consistent throughout the function, or it is too small for inconsistency to occur so the rule does not apply.
+    threshold: 0.7
+    severity: warning

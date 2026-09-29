@@ -1,0 +1,562 @@
+# google-go-decisions: tastes adapted from the Google Go Style Guide,
+# "Style Decisions".
+#
+# Source: https://google.github.io/styleguide/go/decisions (by Google,
+# licensed under CC BY 3.0, https://creativecommons.org/licenses/by/3.0/).
+# The rules below summarize and adapt decision sections that can be judged
+# from a single function; they are not the original text. Rules about
+# package names, imports, and type declarations, and rules that gofmt, go vet,
+# or staticcheck enforce mechanically (such as error string capitalization,
+# receiver names like this/self, redundant break statements, Yoda conditions,
+# copying sync.Mutex, and unkeyed fields of imported struct types) are left to
+# those tools.
+#
+# Every taste is judged per function. A function that contains nothing the
+# rule applies to is rated at the best level, and the exceptions allowed by
+# the guide are spelled out so that idiomatic code is not penalized. Tastes
+# named test-* apply only to test functions and test helpers; every other
+# function complies with them.
+#
+# Rules whose violations lead to bugs, such as discarded or unreliable
+# errors, panics, leaked goroutines, dropped contexts, aliasing, and weak
+# randomness, have severity fail. Rules about naming, readability, and test
+# style have severity warning, so they are reported without failing the
+# check.
+version: 1
+tastes:
+  # Decisions: Variable names, Single-letter variable names, Repetition
+  - id: variable-names
+    description: |
+      Rule (Google Go Style Guide, "Variable names" and "Repetition"): the length of each local
+      name is proportional to the size of its scope and inversely proportional to how often
+      it is used. Short names (even one letter) are fine in small scopes, for loop indices, for
+      method receivers, and for familiar cases like `r` for an io.Reader or `w` for an
+      io.Writer; names used across a long function need more words.
+      Names reflect what the value contains and how it is used here, and they avoid:
+      type-like words (`userSlice`, `nameString`, `numUsers`; prefer `users`, `name`,
+      `userCount`), unless two forms of the same value coexist (e.g. `limitStr` and `limit`);
+      words that repeat the surrounding context (e.g. `userCount` inside a method named
+      UserCount, or `dbLoadError` for an error); and letters dropped just to save typing
+      (`Sbx` for sandbox). Common abbreviations such as `db`, `ctx`, `err`, and `id` are fine.
+      If every name in the function fits its scope and use, it complies.
+    levels:
+      - Several names are opaque for their scope, embed their type, or repeat the surrounding context.
+      - One name is too short or too long for its scope, or carries a redundant type or context word.
+      - Every name fits its scope and use, or the function has no local names to judge so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Decisions: Getters
+  - id: getters
+    description: |
+      Rule (Google Go Style Guide, "Getters"): the name of this function or method does not
+      start with `Get` or `get`. A function that returns a value starts with the noun
+      directly (`Counts`, not `GetCounts`). When the function performs a complex computation
+      or a remote call, a word like `Compute` or `Fetch` makes it clear that it may take time
+      or fail.
+      Exceptions: the underlying concept uses the word "get" (e.g. an HTTP GET handler), or
+      the name must match an interface or generated code the author does not control (e.g.
+      protocol buffer getters).
+      Judge only the name of this function.
+    levels:
+      - The function name starts with Get although the concept does not involve "get".
+      - The function name avoids Get, but it hides an expensive or remote operation behind a plain noun where Compute or Fetch would be clearer.
+      - The function name does not start with Get, or uses Get for a genuine "get" concept, so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Decisions: Named result parameters
+  - id: named-results
+    description: |
+      Rule (Google Go Style Guide, "Named result parameters"): result parameters are named
+      only when the names help, namely when the function returns two or more values of the
+      same type (e.g. `(left, right *Node, err error)`) or when a name tells callers what they
+      must do with a result (e.g. `cancel func()`). Naming a result is also always acceptable
+      when a deferred closure must change its value.
+      Violations: names that just repeat the type (`(node *Node)`); naming results only to
+      avoid declaring a local variable or only to enable naked returns; and naked returns in
+      a function that is more than a few lines long.
+      If the function has no named results and no naked returns, it complies.
+    levels:
+      - The function names results only to use naked returns in a medium or long body, or its result names merely repeat their types.
+      - The function names results where the names add little, but it returns values explicitly.
+      - Result names are used only where they help or are needed by a deferred closure, or the results are unnamed so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Decisions: Doc comments, Comment sentences
+  - id: doc-comments
+    description: |
+      Rule (Google Go Style Guide, "Doc comments" and "Comment sentences"): an exported function
+      or method (its name starts with an upper-case letter) has a doc comment directly above
+      it. The doc comment is written in full sentences, is capitalized and punctuated, and
+      begins with the name of the function (an article may precede the name), e.g.
+      `// Encode writes the JSON encoding of req to w.`
+      Unexported functions need a doc comment only when their behavior is not obvious; when
+      they have one, it should also begin with the function name. Test, Benchmark, Fuzz, and
+      Example functions, and methods that implement a well-known interface such as String or
+      Error, do not need a doc comment.
+      The doc comment is included in the code shown. If the function is unexported and
+      obvious, it complies.
+    levels:
+      - The function is exported and has no doc comment, or its doc comment does not describe it.
+      - The function has a doc comment, but it does not start with the function name or is not written in full sentences.
+      - The doc comment starts with the name and is written in full sentences, or the function is unexported and obvious or a test function so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Decisions: Handle errors
+  - id: handle-errors
+    description: |
+      Rule (Google Go Style Guide, "Handle errors"): every error returned by a call in this
+      function is handled deliberately. The function either handles and addresses the error
+      immediately, returns it to the caller, or, in exceptional situations, stops the
+      program (log.Fatal) or panics.
+      Discarding an error that can actually occur, by assigning it to `_` or by calling a
+      function that returns an error without using the result, is a violation, unless an
+      accompanying comment explains why it is safe (e.g.
+      `n, _ := b.Write(p) // never returns a non-nil error`).
+      Compliant without a comment: calls documented never to return an error, such as writes
+      to a strings.Builder or bytes.Buffer (including fmt.Fprintf into them); `defer f.Close()`
+      on a file opened only for reading; and fmt.Print* to standard output. Discarding a
+      non-error result with `_` (e.g. `_, err := f()`) is not judged by this rule.
+      If the function does not call anything that returns an error, it complies.
+    levels:
+      - The function silently discards an error that can actually occur.
+      - The function explicitly discards an error with `_` without a comment, although the error cannot actually occur.
+      - Every error is handled, returned, or discarded with an explanatory comment, or the function receives no error so the rule does not apply.
+    threshold: 0.7
+    severity: fail
+
+  # Decisions: Returning errors
+  - id: returning-errors
+    description: |
+      Rule (Google Go Style Guide, "Returning errors"): when this function can fail, it
+      signals failure with a result of type `error`, placed as the last result. An exported
+      function returns the `error` interface type, not a concrete error type such as
+      `*os.PathError` or `*MyError`, because a nil concrete pointer wrapped in the error
+      interface becomes a non-nil error.
+      Also a violation: returning a concrete error-typed variable that may be a nil pointer
+      through an `error` result (e.g. `var e *MyErr; ...; return e`).
+      Unexported helpers that return a concrete error type used only by the package are a
+      minor issue. If the function does not return an error, it complies.
+    levels:
+      - The function returns a concrete error type from an exported function, may return a typed nil pointer as an error, or does not put error last.
+      - An unexported helper returns a concrete error type where the error interface would be safer.
+      - The function returns failures as a trailing error of interface type, or it does not return errors so the rule does not apply.
+    threshold: 0.7
+    severity: fail
+
+  # Decisions: In-band errors
+  - id: in-band-errors
+    description: |
+      Rule (Google Go Style Guide, "In-band errors"): the function does not signal errors or
+      missing results with special in-band values such as -1, an empty string, nil, or a zero
+      value that could also be a valid result. Instead it returns an additional value, a
+      `bool` (e.g. `(value string, ok bool)`) when no explanation is needed or an `error`
+      otherwise, as the last result.
+      In-band values are acceptable when they cannot be confused with a valid result and the
+      convention is well established (e.g. strings.Index returning -1, a nil pointer from a
+      lookup documented as "or nil if not found" where nil is never valid).
+      Also allowed: a nil pointer that represents an unset optional value, when the doc
+      comment or the name makes that meaning clear and a set value is never nil (e.g. a `*T`
+      meaning "not given"); and an empty result, such as a nil slice with a nil error, when
+      finding nothing is a valid outcome rather than a failure.
+      Judge from the signature, the doc comment, and the return statements. If the function
+      does not report missing results or failures, it complies.
+    levels:
+      - The function reports failure or absence with a value, such as -1 or "", that callers could mistake for a valid result.
+      - The function reports absence with a value that is valid in rare cases, such as a zero value that callers may occasionally mistake for a real result.
+      - The function reports failure or absence with a trailing ok or error result, its nil or empty results are valid values rather than failure signals, or it never reports them so the rule does not apply.
+    threshold: 0.7
+    severity: fail
+
+  # Decisions: Indent error flow
+  - id: indent-error-flow
+    description: |
+      Rule (Google Go Style Guide, "Indent error flow"): the function handles errors and other
+      terminal conditions first, and the code that runs when the condition is not met follows
+      the if block instead of being indented in an else clause. This applies to any block that
+      ends in return, continue, break, panic, or log.Fatal.
+      Also: when a value returned together with an error is used for more than a few lines,
+      it is declared with a separate statement (`x, err := f()` followed by `if err != nil`)
+      rather than in an if-with-initializer whose else branch holds the normal code.
+      If the function has no if blocks ending in a terminal statement, it complies.
+    levels:
+      - The normal path is indented inside else clauses after error handling that returns.
+      - The function mostly handles errors first, but has one unnecessary else or one if-initializer whose variable is used across many lines.
+      - Errors are handled first and the normal path stays unindented, or there is no terminal branch so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Decisions: Literal formatting (Field names, Zero-value fields)
+  - id: struct-literals
+    description: |
+      Rule (Google Go Style Guide, "Literal formatting"): struct literals in this function are
+      readable. Values are built with composite literals rather than field by field where
+      possible. Fields whose zero value does not matter are omitted, so that the fields that
+      are actually set stand out; zero values are spelled out only when they are important to
+      understand the code (e.g. a table-driven test case about zero or nil input).
+      Struct literals of package-local types with many fields, or with adjacent fields of the
+      same type, use field names.
+      (Unkeyed literals of imported types are reported by go vet and are not judged here.)
+      If the function has no struct literals, it complies.
+    levels:
+      - The function lists many irrelevant zero-value fields, or builds a many-field local struct positionally.
+      - One literal spells out a few irrelevant zero-value fields or omits helpful field names.
+      - Struct literals set only meaningful fields and use field names where helpful, or there are no struct literals so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Decisions: Nil slices
+  - id: nil-slices
+    description: |
+      Rule (Google Go Style Guide, "Nil slices"): an empty local slice, especially one that may
+      be returned, is declared as a nil slice (`var t []string`) rather than an empty literal
+      (`t := []string{}`). Emptiness is checked with `len(s) == 0`, not `s == nil`, and the
+      function does not behave differently for a nil slice and an empty slice, nor ask its
+      callers to make that distinction (e.g. "nil signifies an error").
+      Exceptions: an empty non-nil slice is fine when an external format requires it (e.g. so
+      that JSON encodes `[]` instead of `null`), and `make([]T, 0, n)` with a capacity is fine.
+      If the function declares no empty slice and never compares a slice to nil, it complies.
+    levels:
+      - The function behaves differently for nil and empty slices, or asks callers to distinguish them.
+      - The function declares an empty slice with a literal where a nil slice would do, or checks emptiness with == nil in a harmless way.
+      - Empty slices are nil and emptiness is checked with len, or the function has no empty slices so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Decisions: Indentation confusion, Function formatting, Conditionals and loops
+  - id: line-breaks
+    description: |
+      Rule (Google Go Style Guide, "Indentation confusion", "Function formatting", and
+      "Conditionals and loops"): the function avoids line breaks that align code with an
+      indented block. Its signature stays on one line, and if conditions, for clauses, and
+      case lists are not wrapped; long conditions are shortened by extracting named local
+      variables instead. Calls are not broken at arbitrary points just for line length (a
+      break that groups arguments semantically is fine), and long string literals such as
+      format strings or URLs are not split into concatenated pieces to fit a width.
+      Also avoided: inline comments labeling individual call arguments where an option struct
+      would be clearer.
+      If the function has no wrapped lines, it complies.
+    levels:
+      - The function wraps its signature or conditions so that they line up with the body, or splits long strings to fit a width.
+      - The function has one call or expression wrapped at an arbitrary point that would read better on one line or with an extracted variable.
+      - Lines are broken only at semantic boundaries, or the function has no wrapped lines so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Decisions: Copying
+  - id: copying
+    description: |
+      Rule (Google Go Style Guide, "Copying"): the function does not copy values that must not
+      be copied. In general, a value of type T is not copied when T's methods are defined on
+      the pointer type *T. Well-known examples are bytes.Buffer (a copy may alias the
+      original's internal array) and strings.Builder, as well as structs that contain such
+      fields or synchronization objects.
+      Copies can happen through assignment (`b2 := b1`), passing or returning by value, value
+      receivers, or ranging over a slice of such structs by value.
+      Taking pointers, or declaring a local value and only ever using its address or methods,
+      is compliant. (Copying sync.Mutex itself is reported by go vet.)
+      If the function copies no such value, it complies.
+    levels:
+      - The function copies a value such as a bytes.Buffer or a struct containing one, so the copy may alias the original.
+      - The function copies such a value in a way that is harmless today, such as copying before first use, but fragile.
+      - The function never copies values whose methods use pointer receivers, or copies none so the rule does not apply.
+    threshold: 0.7
+    severity: fail
+
+  # Decisions: Don't panic, Must functions
+  - id: dont-panic
+    description: |
+      Rule (Google Go Style Guide, "Don't panic" and "Must functions"): the function does not
+      use panic for normal error handling; it returns an error instead.
+      Allowed: helpers named MustXYZ or mustXYZ that are meant for program initialization or
+      for tests (a test helper may call t.Fatal); panics for "impossible" conditions that
+      indicate bugs; log.Exit/log.Fatal or panic in main and init code for errors that must
+      terminate the program.
+      Only this function body is visible, not its callers. A function whose own name starts
+      with "Must" or "must" follows the convention for helpers used during initialization, so
+      assume it is used that way and treat its panic as allowed.
+      Also a violation: calling a Must function (e.g. regexp.MustCompile, version.MustParse)
+      on runtime input such as a request, a parameter, or user data, where the error could be
+      returned instead. Calling one on a constant (e.g. a literal pattern) is fine.
+      If the function neither panics nor calls a Must function, it complies.
+    levels:
+      - The function panics for an ordinary error, or calls a Must function on runtime input where the error could be returned.
+      - The function panics for a condition that is unlikely but that callers could reasonably handle.
+      - The function returns errors, panics only as a Must helper or for impossible conditions, or neither panics nor uses Must so the rule does not apply.
+    threshold: 0.7
+    severity: fail
+
+  # Decisions: Goroutine lifetimes
+  - id: goroutine-lifetimes
+    description: |
+      Rule (Google Go Style Guide, "Goroutine lifetimes"): when this function spawns goroutines,
+      it is obvious when or whether they exit. Typically the synchronization is kept within
+      the function: goroutines stop when a context is cancelled or their input is exhausted,
+      and the function waits for them (e.g. sync.WaitGroup, errgroup) before returning.
+      Violations: `go` statements whose goroutines may block forever on a channel send or
+      receive, goroutines left running with no way to stop them, or goroutines that may send
+      on a channel that is closed elsewhere.
+      A goroutine may outlive the function when that is documented and the stop mechanism is
+      clear (e.g. a Start method whose doc says Stop must be called).
+      If the function starts no goroutine, it complies.
+    levels:
+      - The function starts goroutines whose exit is unclear and that can leak or block forever.
+      - The goroutines do exit, but when or how is not evident without careful reading or documentation.
+      - Every goroutine has an evident end, or the function starts no goroutine so the rule does not apply.
+    threshold: 0.7
+    severity: fail
+
+  # Decisions: Synchronous functions
+  - id: synchronous-functions
+    description: |
+      Rule (Google Go Style Guide, "Synchronous functions"): the function is synchronous: it
+      returns its results directly and finishes any callbacks or channel operations before
+      returning. Callers can add concurrency by calling it in a goroutine if they need it.
+      Violations: returning a channel that delivers a single result, invoking a callback from
+      a background goroutine instead of returning, or starting background work that outlives
+      the call when a plain synchronous call would do.
+      Allowed: functions whose purpose is concurrency (e.g. a server's Serve loop, a
+      pipeline stage documented as such), and internal parallelism that is fully waited for
+      before returning.
+      If the function does not produce results asynchronously, it complies.
+    levels:
+      - The function returns results asynchronously, such as through a returned channel or a background callback, where a synchronous result would do.
+      - The function is mostly synchronous, but leaves one piece of work running in the background without need.
+      - The function returns its results directly, or it is concurrent by design so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Decisions: Pass values
+  - id: pass-values
+    description: |
+      Rule (Google Go Style Guide, "Pass values"): the function does not take pointers as
+      arguments just to save a few bytes. If a parameter `x` is only ever read as `*x`, it
+      should not be a pointer. Common violations are `*string` and pointers to interface
+      values (e.g. `*io.Reader`), which are fixed-size and can be passed directly.
+      Allowed: pointers to large structs or structs that may grow, protocol buffer messages,
+      pointers used to modify the pointee, and pointers used to express an optional value
+      (nil meaning absent).
+      If the function takes no pointer parameter, it complies.
+    levels:
+      - The function takes a pointer to a string, an interface, or another small value that it only reads.
+      - The function takes a pointer to a small struct that it only reads, where a value would be simpler.
+      - Pointer parameters are needed for mutation, size, optionality, or protos, or there are none so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Decisions: Use %q
+  - id: use-percent-q
+    description: |
+      Rule (Google Go Style Guide, "Use %q"): when the function formats a string value in
+      quotation marks for humans (log messages, errors, test failures), it uses the %q verb
+      instead of wrapping %s in quotes manually, such as `"\"%s\""` or `'%s'`. %q makes empty
+      strings and control characters visible.
+      If the function does not quote string values in formatted output, it complies.
+    levels:
+      - The function quotes string values manually with "%s" or '%s' in several places.
+      - The function quotes a string value manually in one place.
+      - Quoted string values use %q, or the function quotes no string values so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Decisions: Contexts
+  - id: context-propagation
+    description: |
+      Rule (Google Go Style Guide, "Contexts"): the function passes the context it received
+      from its caller along the call chain. It does not create a fresh base context with
+      context.Background() or context.TODO() in the middle of the call chain, which would drop
+      the caller's cancellation, deadline, and values.
+      Allowed: entrypoints create the base context: func main, func init, test functions and
+      test helpers (whether they use context.Background() or t.Context() is judged by
+      context-first), and server framework code that builds a per-request context; HTTP
+      handlers take the context from req.Context().
+      Violations also include receiving a ctx parameter but calling functions with a new
+      context.Background() instead of it.
+      A function that receives a context but calls no context-aware function and does no
+      blocking work (e.g. a test double or an in-memory implementation of an interface)
+      complies even when it ignores the context.
+      If the function does not create or pass contexts, it complies.
+    levels:
+      - The function creates context.Background() or context.TODO() in the middle of a call chain, or ignores the context it receives while calling context-aware functions or doing blocking work.
+      - The function receives or has access to a context, but passes a derived or unrelated context to one call where the caller's context should be used.
+      - The function propagates the caller's context, creates a base context only as an entrypoint, or does not use contexts so the rule does not apply.
+    threshold: 0.7
+    severity: fail
+
+  # Decisions: Contexts, Custom contexts
+  - id: context-first
+    description: |
+      Rule (Google Go Style Guide, "Contexts" and "Custom contexts"): when the function takes a
+      context.Context, it is the first parameter (`func F(ctx context.Context, ...)`); in test
+      helpers the context comes before `t *testing.T`. The function does not take or return
+      a custom context type or an interface other than context.Context in place of a context.
+      Also a violation: storing a context in a struct field instead of passing it to each
+      method that needs it (unless a method signature must match an external interface).
+      In test functions, the initial context comes from t.Context() rather than
+      context.Background() (a minor issue).
+      HTTP handlers and streaming RPC methods, which get their context from the request or
+      stream, comply. If the function takes no context, it complies.
+    levels:
+      - The function uses a custom context type, or stores a context in a struct field.
+      - The function takes context.Context but not as its first parameter, or a test uses context.Background() instead of t.Context().
+      - The context is the first parameter of type context.Context, or the function takes no context so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Decisions: crypto/rand
+  - id: crypto-rand
+    description: |
+      Rule (Google Go Style Guide, "crypto/rand"): the function does not use math/rand or
+      math/rand/v2 to generate keys, tokens, nonces, passwords, session IDs, or other values
+      that must be unpredictable, even throwaway ones. It uses crypto/rand (e.g. rand.Read,
+      rand.Text) and encodes the bytes as hex or base64 if text is needed.
+      math/rand is fine for non-security purposes such as jitter, sampling, shuffling test
+      data, or load balancing.
+      If the function generates no random values for security purposes, it complies.
+    levels:
+      - The function generates a key, token, or other secret with math/rand.
+      - The function uses math/rand for an identifier whose predictability might matter, without a comment explaining why it is safe.
+      - Secrets come from crypto/rand, or the function generates no security-sensitive random values so the rule does not apply.
+    threshold: 0.7
+    severity: fail
+
+  # Decisions: Interfaces
+  - id: return-concrete-types
+    description: |
+      Rule (Google Go Style Guide, "Interfaces"): the function takes interfaces as arguments
+      but returns concrete types, so that callers have access to every public method and
+      field of the result.
+      Allowed: returning `error`; returning an interface for encapsulation when it is the
+      point of the API, such as factory, strategy, command, or chaining patterns, or when
+      the function must satisfy an existing interface signature.
+      Violations: a constructor such as `func NewStore(...) Store` that returns a
+      single-implementation interface instead of `*Store`.
+      If the function returns no interface type other than error, it complies.
+    levels:
+      - The function returns an interface where it has a single concrete implementation and no encapsulation need.
+      - The function returns an interface whose benefit over the concrete type is unclear.
+      - The function returns concrete types, or returns an interface for a valid reason such as error, so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Decisions: Useful test failures (Identify the function, Identify the input,
+  # Got before want, Print diffs, Level of detail)
+  - id: test-failure-messages
+    description: |
+      Rule (Google Go Style Guide, "Useful test failures"): this rule applies only to test
+      functions (named Test*, Benchmark*, Fuzz*, or Example*) and test helpers (functions that
+      take a *testing.T, *testing.B, *testing.F, or testing.TB). Every other function
+      complies.
+      Failure messages let a reader diagnose the failure without reading the test source:
+      they identify the function under test and its inputs, and print the actual value before
+      the expected one, conventionally `YourFunc(%v) = %v, want %v`, using the words got and
+      want rather than actual and expected. Diffs state their direction, e.g.
+      `diff (-want +got)`. Setup failures only need to say what failed.
+      Violations: messages such as `t.Error("wrong result")`, `got %v, want %v` without the
+      function or input when they are not obvious, or want printed before got.
+    levels:
+      - Failure messages do not say what was called or what was returned, such as a bare "wrong result".
+      - Failure messages give got and want, but omit the function or input, put want first, or print a diff without its direction.
+      - Failure messages identify the function, input, got, and want, or this is not a test function so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Decisions: Keep going
+  - id: test-keep-going
+    description: |
+      Rule (Google Go Style Guide, "Keep going"): this rule applies only to test functions and
+      test helpers (see test-failure-messages for how to recognize them). Every other function
+      complies.
+      The test keeps going after a failure so that one run reports every failed check. A
+      mismatch in the output is reported with t.Error/t.Errorf, and several properties of an
+      output are each checked with t.Error. t.Fatal/t.Fatalf is used only when continuing
+      would be meaningless or misleading, such as when setup fails, when the function under
+      test returns an unexpected error, or when a nil result would make later checks panic.
+      In a subtest (inside t.Run), t.Fatal ends only that subtest and is fine.
+    levels:
+      - The test stops with t.Fatal on ordinary value mismatches that could be reported with t.Error.
+      - The test mostly uses t.Error, but one independent comparison uses t.Fatal.
+      - Mismatches are reported with t.Error and t.Fatal is reserved for fatal conditions, or this is not a test function so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Decisions: Full structure comparisons, Compare stable results,
+  # Equality comparison and diffs
+  - id: test-comparisons
+    description: |
+      Rule (Google Go Style Guide, "Full structure comparisons", "Compare stable results", and
+      "Equality comparison and diffs"): this rule applies only to test functions and test
+      helpers (see test-failure-messages). Every other function complies.
+      When the function under test returns a struct, slice, or map, the test builds the
+      expected value and compares it as a whole with cmp.Diff or cmp.Equal (with cmpopts or
+      protocmp.Transform as needed), instead of hand-coded field-by-field comparisons.
+      reflect.DeepEqual is not used for equality checks. Results that depend on the output
+      stability of a package the test does not own, such as the exact bytes of
+      json.Marshal, are compared semantically (e.g. by parsing) rather than as strings.
+      Multiple return values may be compared one by one; irrelevant fields may be skipped.
+    levels:
+      - The test compares complex results field by field or with reflect.DeepEqual, or compares unstable serialized output as a string.
+      - The test mostly uses cmp, but one comparison is hand-coded or depends on unstable output.
+      - Results are compared as whole values with cmp on stable data, or this is not a test function so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Decisions: Test error semantics
+  - id: test-error-semantics
+    description: |
+      Rule (Google Go Style Guide, "Test error semantics"): this rule applies only to test
+      functions and test helpers (see test-failure-messages). Every other function complies.
+      The test does not use string comparison, such as `err.Error() == "..."` or
+      strings.Contains(err.Error(), ...), to check which kind of error was returned. It checks
+      only whether an error occurred (`(err != nil) != tt.wantErr`), or it checks the error
+      semantically with errors.Is, errors.As, or cmp with cmpopts.EquateErrors.
+      Allowed: string checks that verify properties of messages produced by the package
+      under test itself, such as that a message includes the parameter name.
+      If the test does not check errors, it complies.
+    levels:
+      - The test identifies the kind of error by comparing its message string.
+      - The test checks errors semantically, but one check relies on part of a message where errors.Is would work.
+      - Errors are checked by presence or semantically, or this is not a test function or it checks no errors so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Decisions: Test helpers, Assertion libraries
+  - id: test-helpers
+    description: |
+      Rule (Google Go Style Guide, "Test helpers" and "Assertion libraries"): this rule applies
+      only to functions that take a *testing.T, *testing.B, *testing.F, or testing.TB and
+      are not themselves Test*, Benchmark*, or Fuzz* functions. Every other function complies.
+      Such a test helper performs setup or cleanup, calls t.Helper() so that failures are
+      attributed to the caller's line, and takes t after a context parameter (if any) and
+      before the others.
+      The helper is not an assertion helper, i.e. a function that compares values and fails
+      the test (e.g. assertEqual(t, got, want)); comparisons belong in the test, or the helper
+      returns a value or an error that the test uses in its own failure message.
+    levels:
+      - The helper is an assertion helper that compares values and fails the test.
+      - The helper performs setup, but does not call t.Helper() or takes t in the wrong position.
+      - The helper calls t.Helper() and only performs setup or cleanup, or this is not a test helper so the rule does not apply.
+    threshold: 0.7
+    severity: warning
+
+  # Decisions: Table-driven tests, Subtests, Identifying the row
+  - id: test-table-driven
+    description: |
+      Rule (Google Go Style Guide, "Table-driven tests" and "Subtests"): this rule applies only
+      to test functions (named Test*, Benchmark*, or Fuzz*). Every other function complies.
+      When the test is table driven: failure messages identify the row by its inputs or a
+      description, not by its index in the table (e.g. `Failed on case #%d`); subtest names
+      are readable, easy to type on the command line, and avoid slashes; and the loop body
+      does not contain complex conditional logic that depends on row fields to decide how to
+      set up or check the case (split such cases into separate tests or subtests instead).
+      Simple conditions like checking wantErr are fine. Subtests do not depend on each other.
+      If the test is not table driven, it complies.
+    levels:
+      - The table test identifies rows only by index, or its loop body branches heavily on row fields to set up or check different cases.
+      - The table test is mostly sound, but has unclear subtest names or one piece of row-specific branching.
+      - Rows are identified by inputs or names and the loop body is uniform, or this is not a table-driven test so the rule does not apply.
+    threshold: 0.7
+    severity: warning
