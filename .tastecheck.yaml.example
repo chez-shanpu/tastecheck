@@ -32,6 +32,16 @@ rulesets:
   #     error-wrap:         # a different taste from uber-go/error-wrap
   #       threshold: 0.9
 
+# Files and directories to skip, as paths relative to the directory of this
+# config file. Each path element may use the syntax of Go's path.Match (*, ?,
+# [...]; no **). A directory pattern skips everything under it. Patterns are
+# anchored to the config file directory. `tastecheck check --ignore` adds
+# patterns relative to the current directory.
+# ignore:
+#   - internal/legacy
+#   - internal/*/mock
+#   - "cmd/gen_*.go"
+
 # Evaluator settings. All fields are optional, and explicitly given command
 # line flags take precedence. The values below are the defaults.
 evaluator:

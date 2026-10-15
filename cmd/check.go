@@ -16,6 +16,7 @@ import (
 	_ "github.com/chez-shanpu/tastecheck/internal/evaluator/mock"
 	"github.com/chez-shanpu/tastecheck/internal/evaluator/typesafeai"
 	"github.com/chez-shanpu/tastecheck/internal/extract"
+	"github.com/chez-shanpu/tastecheck/internal/ignore"
 	"github.com/chez-shanpu/tastecheck/internal/report"
 )
 
@@ -36,6 +37,7 @@ type checkOptions struct {
 	maxRetries    int
 	minConfidence float64
 	includeTests  bool
+	ignore        []string
 	verbose       bool
 }
 
@@ -53,6 +55,11 @@ rulesets selected in the config file, and report the scores.
 
 A path is a .go file, a directory, or a directory followed by "/..." (recursive).
 Defaults to "./..." when no path is given.
+
+Files and directories matching an ignore pattern are skipped, even when given
+explicitly. The patterns of the config file's "ignore" are relative to the
+config file directory, and those of --ignore are relative to the current
+directory. --ignore adds to the config file's patterns.
 
 Evaluator flags take precedence over the config file.
 
@@ -81,6 +88,7 @@ Exit codes:
 	f.StringVarP(&opts.output, "output", "o", string(report.FormatText), fmt.Sprintf("Output format %v", report.Formats))
 	addEvaluatorFlags(f, &opts)
 	f.BoolVar(&opts.includeTests, "include-tests", false, "Include _test.go files when expanding directories")
+	f.StringArrayVar(&opts.ignore, "ignore", nil, "Skip files and directories matching this pattern, relative to the current directory (repeatable)")
 	f.BoolVarP(&opts.verbose, "verbose", "v", false, "Also list passing functions in text output")
 	return cmd
 }
@@ -108,7 +116,14 @@ func runCheck(cmd *cobra.Command, paths []string, opts checkOptions) error {
 	if err != nil {
 		return err
 	}
-	funcs, err := extract.Extract(paths, extract.Options{IncludeTests: opts.includeTests})
+	flagIgnore, err := ignore.New(".", opts.ignore)
+	if err != nil {
+		return fmt.Errorf("--ignore: %w", err)
+	}
+	funcs, err := extract.Extract(paths, extract.Options{
+		IncludeTests: opts.includeTests,
+		Ignore:       ignore.Any(cfg.Ignore, flagIgnore),
+	})
 	if err != nil {
 		return err
 	}

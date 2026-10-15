@@ -49,7 +49,9 @@ tastecheck ruleset show uber-go
 
 A path argument is a `.go` file, a directory (non-recursive), or a directory followed by `/...` (recursive). When
 expanding directories, `vendor`, `testdata`, and directories starting with `.` or `_` are skipped. `_test.go` files are
-skipped unless `--include-tests` is set. Generated files (`Code generated ... DO NOT EDIT.`) are always skipped.
+skipped unless `--include-tests` is set. Generated files (`Code generated ... DO NOT EDIT.`) are always skipped. Files
+and directories matching an ignore pattern, from the config file's [`ignore`](#ignore-patterns) or `--ignore`, are
+skipped even when given explicitly.
 
 | Flag               | Default                        | Description                                                                                                                                            |
 |--------------------|--------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -61,6 +63,7 @@ skipped unless `--include-tests` is set. Generated files (`Code generated ... DO
 | `--max-retries`    | `3`                            | Retries on rate limiting, overload, or network errors (exponential backoff). `0` disables                                                              |
 | `--min-confidence` | `0`                            | Ignore a finding below its threshold when the evaluator's confidence is below this value, within `[0, 1]`. `0` disables. See [Confidence](#confidence) |
 | `--include-tests`  | `false`                        | Include `_test.go` files                                                                                                                               |
+| `--ignore`         |                                | Skip paths matching this [ignore pattern](#ignore-patterns), relative to the current directory. Repeatable; adds to `ignore`                           |
 | `-v, --verbose`    | `false`                        | Also list passing functions in text output                                                                                                             |
 
 Evaluator flags given explicitly take precedence over the config file, which takes precedence over the flag defaults.
@@ -100,6 +103,9 @@ rulesets: # every builtin ruleset is used unless disabled here
     overrides:
       error-wrap: # a different taste from uber-go/error-wrap
         threshold: 0.9
+ignore: # relative to the config file; see Ignore patterns
+  - internal/legacy          # a directory and everything under it
+  - "cmd/gen_*.go"
 evaluator: # all optional
   backend: typesafeai
   model: jev-latest
@@ -119,6 +125,24 @@ evaluator: # all optional
 - Overriding a taste ID that the ruleset does not define is an error, which catches typos. Leaving no taste enabled is
   also an error.
 - Unknown fields are rejected.
+
+### Ignore patterns
+
+`ignore` in the config file and `--ignore` exclude files and directories from evaluation.
+
+- A pattern is a slash-separated relative path. Each element may use the syntax of
+  Go's [`path.Match`](https://pkg.go.dev/path#Match) (`*`, `?`, `[...]`); `**` is not supported, and `*` does not match
+  `/`.
+- A pattern matches a file when it matches the file's path or one of its parent directories, so a pattern naming a
+  directory ignores everything under it. `internal/leg` does not match `internal/legacy/x.go`.
+- Patterns are anchored to their base directory: the config file directory for `ignore`, and the current directory for
+  `--ignore`. `mock` matches only `./mock`, not `internal/mock`; use `internal/*/mock` for a fixed depth.
+- `--ignore` patterns are added to the config file's `ignore`; they do not replace it.
+- Ignored paths are skipped even when given explicitly, before they are checked to exist or to be `.go` files.
+- Paths are compared lexically; symbolic links are not resolved. Give the config file and the paths to check through the
+  same directory names, or a pattern may not match.
+- An empty, absolute, or malformed pattern, or one referring to its base directory itself (`.`) or outside it (`../x`),
+  is an error.
 
 ## Builtin rulesets
 

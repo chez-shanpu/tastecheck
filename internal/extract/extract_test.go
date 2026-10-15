@@ -72,6 +72,20 @@ func names(funcs []Function) []string {
 	return out
 }
 
+// ignoreUnder returns an Options.Ignore that excludes the given paths
+// relative to root and everything under them.
+func ignoreUnder(root string, rels ...string) func(string) bool {
+	return func(path string) bool {
+		for _, rel := range rels {
+			p := filepath.Join(root, rel)
+			if path == p || strings.HasPrefix(path, p+string(filepath.Separator)) {
+				return true
+			}
+		}
+		return false
+	}
+}
+
 func TestExtractPatterns(t *testing.T) {
 	root := writeFixtures(t)
 
@@ -102,6 +116,30 @@ func TestExtractPatterns(t *testing.T) {
 			name:     "recursive skips vendor, testdata, dot and underscore dirs",
 			patterns: []string{filepath.Join(root, "sub") + "/...", filepath.Join(root, "a.go")},
 			want:     []string{"Hello", "(T).Value", "(*T).Pointer", "(*G[K]).Get", "B"},
+		},
+		{
+			name:     "ignored directory is not walked",
+			patterns: []string{root + "/..."},
+			opts:     Options{Ignore: ignoreUnder(root, "broken", "sub")},
+			want:     []string{"Hello", "(T).Value", "(*T).Pointer", "(*G[K]).Get"},
+		},
+		{
+			name:     "ignore applies to explicit files and non-recursive directories",
+			patterns: []string{root, filepath.Join(root, "sub", "b.go")},
+			opts:     Options{Ignore: ignoreUnder(root, "a.go", "sub")},
+			want:     []string{},
+		},
+		{
+			name:     "ignored explicit paths are skipped before they are resolved",
+			patterns: []string{filepath.Join(root, "missing"), filepath.Join(root, "README.md"), filepath.Join(root, "sub")},
+			opts:     Options{Ignore: ignoreUnder(root, "missing", "README.md")},
+			want:     []string{"B"},
+		},
+		{
+			name:     "ignored files are skipped during the walk",
+			patterns: []string{root + "/..."},
+			opts:     Options{Ignore: ignoreUnder(root, "broken", "a.go")},
+			want:     []string{"B"},
 		},
 		{
 			name:     "duplicate patterns are deduplicated",

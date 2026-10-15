@@ -19,6 +19,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
+	"github.com/chez-shanpu/tastecheck/internal/ignore"
 	"github.com/chez-shanpu/tastecheck/internal/ruleset"
 	"github.com/chez-shanpu/tastecheck/internal/taste"
 )
@@ -30,6 +31,8 @@ const SupportedVersion = 1
 type Config struct {
 	Rulesets  []RulesetRef
 	Evaluator EvaluatorConfig
+	// Ignore matches the files excluded from evaluation; nil excludes none.
+	Ignore *ignore.Matcher
 	// baseDir is the directory that relative ruleset paths resolve against.
 	baseDir string
 }
@@ -214,6 +217,7 @@ func or[T any](a, b *T) *T {
 type rawConfig struct {
 	Version   int             `yaml:"version"`
 	Rulesets  []RulesetRef    `yaml:"rulesets"`
+	Ignore    []string        `yaml:"ignore"`
 	Evaluator EvaluatorConfig `yaml:"evaluator"`
 }
 
@@ -240,6 +244,12 @@ func (raw *rawConfig) validate() error {
 			errs = append(errs, fmt.Errorf("rulesets[%d]: duplicate ruleset name %q (set a distinct name)", i, name))
 		}
 		seen[name] = true
+	}
+
+	for i, p := range raw.Ignore {
+		if err := ignore.Validate(p); err != nil {
+			errs = append(errs, fmt.Errorf("ignore[%d]: %w", i, err))
+		}
 	}
 
 	if c := raw.Evaluator.Concurrency; c != nil && *c < 0 {
@@ -288,7 +298,8 @@ func effectiveRulesets(refs []RulesetRef) []RulesetRef {
 }
 
 // Load reads and validates the configuration file at path.
-// Relative ruleset paths are resolved against the file's directory.
+// Relative ruleset paths and ignore patterns are resolved against the file's
+// directory.
 func Load(path string) (*Config, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -304,7 +315,8 @@ func Load(path string) (*Config, error) {
 }
 
 // Parse decodes and validates a configuration from r. Relative ruleset paths
-// are resolved against baseDir. Unknown fields are rejected.
+// and ignore patterns are resolved against baseDir. Unknown fields are
+// rejected.
 func Parse(r io.Reader, baseDir string) (*Config, error) {
 	dec := yaml.NewDecoder(r)
 	dec.KnownFields(true)
@@ -319,10 +331,17 @@ func Parse(r io.Reader, baseDir string) (*Config, error) {
 	if err := raw.validate(); err != nil {
 		return nil, err
 	}
+	// validate has checked every pattern, so New fails only when the
+	// current directory cannot be determined.
+	ig, err := ignore.New(baseDir, raw.Ignore)
+	if err != nil {
+		return nil, err
+	}
 
 	return &Config{
 		Rulesets:  effectiveRulesets(raw.Rulesets),
 		Evaluator: raw.Evaluator,
+		Ignore:    ig,
 		baseDir:   baseDir,
 	}, nil
 }

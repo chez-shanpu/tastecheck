@@ -188,9 +188,15 @@ func TestCheckExitCodes(t *testing.T) {
 	dir := t.TempDir()
 	cfg := writeFile(t, dir, "config.yaml", "version: 1\nrulesets:\n  - builtin: uber-go\nevaluator:\n  backend: mock\n")
 	nopeCfg := writeFile(t, dir, "nope.yaml", "version: 1\nevaluator:\n  backend: nope\n")
+	ignoreCfg := writeFile(t, dir, "ignore.yaml", "version: 1\nrulesets:\n  - builtin: uber-go\nignore: [bad.go]\nevaluator:\n  backend: mock\n")
 	good := writeFile(t, dir, "good.go", "package p\n\nfunc Good() {}\n")
 	bad := writeFile(t, dir, "bad.go", "package p\n\nfunc Bad() {}\n")
 	empty := t.TempDir()
+	// hiddenDir's config ignores hidden paths and a missing file, so walking
+	// hiddenDir checks that the walk root itself is never ignored.
+	hiddenDir := t.TempDir()
+	hiddenCfg := writeFile(t, hiddenDir, ".tastecheck.yaml", "version: 1\nrulesets:\n  - builtin: uber-go\nignore: [\".*\", gone.go]\nevaluator:\n  backend: mock\n")
+	writeFile(t, hiddenDir, "good.go", "package p\n\nfunc Good() {}\n")
 
 	tests := []struct {
 		name       string
@@ -206,6 +212,13 @@ func TestCheckExitCodes(t *testing.T) {
 		{name: "explicit missing config", args: []string{"check", good, "-c", filepath.Join(dir, "none.yaml")}, wantCode: 1, wantStderr: "open config"},
 		{name: "missing path", args: []string{"check", filepath.Join(dir, "none.go"), "-c", cfg}, wantCode: 1, wantStderr: "resolve"},
 		{name: "no functions", args: []string{"check", empty, "-c", cfg}, wantCode: 1, wantStderr: "no functions to check found"},
+		{name: "config ignore", args: []string{"check", good, bad, "-c", ignoreCfg}, wantCode: 0, wantStdout: "PASS"},
+		{name: "config ignore skips explicit file", args: []string{"check", bad, "-c", ignoreCfg}, wantCode: 1, wantStderr: "no functions to check found"},
+		// --ignore is relative to the current directory, which runBinary sets to the repository root.
+		{name: "config ignore does not skip the walk root", args: []string{"check", hiddenDir + "/...", "-c", hiddenCfg}, wantCode: 0, wantStdout: "PASS"},
+		{name: "config ignore skips missing explicit file", args: []string{"check", filepath.Join(hiddenDir, "gone.go"), filepath.Join(hiddenDir, "good.go"), "-c", hiddenCfg}, wantCode: 0, wantStdout: "PASS"},
+		{name: "flag ignore", args: []string{"check", "test/testdata/sample", "-c", cfg, "--ignore", "test/testdata/sample"}, wantCode: 1, wantStderr: "no functions to check found"},
+		{name: "malformed flag ignore", args: []string{"check", good, "-c", cfg, "--ignore", "a/["}, wantCode: 1, wantStderr: `--ignore: ignore pattern "a/["`},
 		{name: "flag overrides config backend", args: []string{"check", good, "-c", cfg, "--backend", "nope"}, wantCode: 1, wantStderr: `unknown evaluator backend "nope"`},
 		{name: "config overrides default backend", args: []string{"check", good, "-c", nopeCfg}, wantCode: 1, wantStderr: `unknown evaluator backend "nope"`},
 	}

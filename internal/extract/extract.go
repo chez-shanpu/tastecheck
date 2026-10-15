@@ -34,6 +34,14 @@ type Function struct {
 type Options struct {
 	// IncludeTests includes _test.go files found by expanding directories.
 	IncludeTests bool
+	// Ignore reports whether a file or directory is excluded. Nil excludes
+	// nothing.
+	Ignore func(path string) bool
+}
+
+// ignored reports whether path is excluded by o.Ignore.
+func (o Options) ignored(path string) bool {
+	return o.Ignore != nil && o.Ignore(path)
 }
 
 // Extract returns the functions declared in the Go files matched by patterns,
@@ -42,7 +50,9 @@ type Options struct {
 // A pattern is a .go file, a directory (its .go files, non-recursive), or a
 // directory followed by "/..." (recursive). Directory expansion skips vendor,
 // testdata, and directories starting with "." or "_", as the go tool does.
-// Files marked as generated ("Code generated ... DO NOT EDIT.") are always skipped.
+// Files marked as generated ("Code generated ... DO NOT EDIT.") are always
+// skipped, and so are files and directories excluded by opts.Ignore, even
+// when given explicitly.
 func Extract(patterns []string, opts Options) ([]Function, error) {
 	files, err := resolveFiles(patterns, opts)
 	if err != nil {
@@ -77,6 +87,11 @@ func resolvePattern(pattern string, opts Options) ([]string, error) {
 	if root, ok := strings.CutSuffix(pattern, "/..."); ok {
 		return walkDir(cmp.Or(root, "."), opts)
 	}
+	// Check before stat so that an ignored path is skipped even when it
+	// does not exist or is not a .go file.
+	if opts.ignored(pattern) {
+		return nil, nil
+	}
 
 	info, err := os.Stat(pattern)
 	if err != nil {
@@ -95,8 +110,11 @@ func resolvePattern(pattern string, opts Options) ([]string, error) {
 	}
 	var files []string
 	for _, e := range entries {
-		if !e.IsDir() && isTargetFile(e.Name(), opts) {
-			files = append(files, filepath.Join(pattern, e.Name()))
+		if e.IsDir() || !isTargetFile(e.Name(), opts) {
+			continue
+		}
+		if path := filepath.Join(pattern, e.Name()); !opts.ignored(path) {
+			files = append(files, path)
 		}
 	}
 	return files, nil
@@ -109,12 +127,12 @@ func walkDir(root string, opts Options) ([]string, error) {
 			return err
 		}
 		if d.IsDir() {
-			if path != root && isSkippedDir(d.Name()) {
+			if (path != root && isSkippedDir(d.Name())) || opts.ignored(path) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		if isTargetFile(d.Name(), opts) {
+		if isTargetFile(d.Name(), opts) && !opts.ignored(path) {
 			files = append(files, path)
 		}
 		return nil
