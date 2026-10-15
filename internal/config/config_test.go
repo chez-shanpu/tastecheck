@@ -211,6 +211,11 @@ rulesets:
 			input:     "version: 1\nrulesets:\n" + disableAllBuiltins() + "  - {path: a/rules.yaml}\n",
 			wantNames: []string{"rules"},
 		},
+		{
+			name:      "ignore",
+			input:     "version: 1\nignore: [internal/legacy, \"cmd/gen_*.go\"]\n",
+			wantNames: ruleset.Names(),
+		},
 		{name: "empty", input: "", wantErr: "config file is empty"},
 		{name: "unsupported version", input: "version: 2\n", wantErr: "unsupported version 2"},
 		{name: "unknown field", input: "version: 1\nruleset: []\n", wantErr: "field ruleset not found"},
@@ -274,6 +279,21 @@ rulesets:
 			name:    "override unknown severity",
 			input:   "version: 1\nrulesets:\n  - builtin: uber-go\n    overrides:\n      error-wrap: {severity: info}\n",
 			wantErr: `overrides.error-wrap: severity must be one of [fail warning], got "info"`,
+		},
+		{
+			name:    "empty ignore pattern",
+			input:   "version: 1\nignore: [a, \"\"]\n",
+			wantErr: "ignore[1]: ignore pattern must not be empty",
+		},
+		{
+			name:    "absolute ignore pattern",
+			input:   "version: 1\nignore: [/abs]\n",
+			wantErr: `ignore[0]: ignore pattern "/abs" must be a relative path`,
+		},
+		{
+			name:    "malformed ignore pattern",
+			input:   "version: 1\nignore: [\"a/[\"]\n",
+			wantErr: `ignore[0]: ignore pattern "a/[": syntax error in pattern`,
 		},
 		{
 			name:    "negative concurrency",
@@ -363,6 +383,25 @@ func TestTastesErrors(t *testing.T) {
 				t.Errorf("Tastes() error = %v, want containing %q", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestLoadIgnore(t *testing.T) {
+	dir := t.TempDir()
+	path := writeFile(t, dir, "conf/.tastecheck.yaml", "version: 1\nignore: [legacy]\n")
+
+	c, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	// Patterns are relative to the config file directory.
+	for file, want := range map[string]bool{
+		filepath.Join(dir, "conf", "legacy", "x.go"): true,
+		filepath.Join(dir, "legacy", "x.go"):         false,
+	} {
+		if got := c.Ignore.Match(file); got != want {
+			t.Errorf("Ignore.Match(%q) = %v, want %v", file, got, want)
+		}
 	}
 }
 
