@@ -23,6 +23,7 @@ import (
 const (
 	backendFlag       = "backend"
 	modelFlag         = "model"
+	baseURLFlag       = "base-url"
 	concurrencyFlag   = "concurrency"
 	maxRetriesFlag    = "max-retries"
 	minConfidenceFlag = "min-confidence"
@@ -33,6 +34,7 @@ type checkOptions struct {
 	output        string
 	backend       string
 	model         string
+	baseURL       string
 	concurrency   int
 	maxRetries    int
 	minConfidence float64
@@ -98,6 +100,7 @@ Exit codes:
 func addEvaluatorFlags(f *pflag.FlagSet, opts *checkOptions) {
 	f.StringVar(&opts.backend, backendFlag, typesafeai.BackendName, fmt.Sprintf("Evaluator backend %v", evaluator.Backends()))
 	f.StringVar(&opts.model, modelFlag, "", "Evaluator model (default: backend default)")
+	f.StringVar(&opts.baseURL, baseURLFlag, "", "Evaluator API base URL (default: backend default)")
 	f.IntVar(&opts.concurrency, concurrencyFlag, check.DefaultConcurrency, "Number of functions evaluated in parallel")
 	f.IntVar(&opts.maxRetries, maxRetriesFlag, check.DefaultMaxRetries, "Retries for transient evaluator errors (0 disables)")
 	f.Float64Var(&opts.minConfidence, minConfidenceFlag, 0, "Ignore findings below their threshold whose evaluator confidence is below this value (0 disables)")
@@ -151,7 +154,7 @@ func runCheck(cmd *cobra.Command, paths []string, opts checkOptions) error {
 		return fmt.Errorf("--%s must be within [0, 1], got %v", minConfidenceFlag, m)
 	}
 
-	ev, err := evaluator.New(*ec.Backend, evaluator.Options{Model: *ec.Model})
+	ev, err := evaluator.New(*ec.Backend, evaluator.Options{Model: *ec.Model, BaseURL: opts.baseURL})
 	if err != nil {
 		return err
 	}

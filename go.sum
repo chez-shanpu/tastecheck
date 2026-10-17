@@ -1,7 +1,7 @@
 github.com/BurntSushi/toml v1.4.1-0.20240526193622-a339e1f7089c h1:pxW6RcqyfI9/kWtOwnv/G+AzdKuy2ZrqINhenH4HyNs=
 github.com/BurntSushi/toml v1.4.1-0.20240526193622-a339e1f7089c/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
-github.com/chez-shanpu/typesafeai-go v0.1.0 h1:raJxpzH9DqSz6AH8sINupCPosHnhgo+sqEF/CscBIxE=
-github.com/chez-shanpu/typesafeai-go v0.1.0/go.mod h1:Uczdxrma/6avVbDADzZPaDdvnvy20ZvF1iDGeSuI+Fw=
+github.com/chez-shanpu/typesafeai-go v0.2.0 h1:AaDDVotQ3PsPqcBgn/UsT7UsA+XFmZSVpXEZ/gqng3o=
+github.com/chez-shanpu/typesafeai-go v0.2.0/go.mod h1:Uczdxrma/6avVbDADzZPaDdvnvy20ZvF1iDGeSuI+Fw=
 github.com/cpuguy83/go-md2man/v2 v2.0.6/go.mod h1:oOW0eioCTA6cOiMLiUPZOpcVxMig6NIQQ7OS05n1F4g=
 github.com/go-quicktest/qt v1.102.0 h1:HSQxCeh5YZH3EL3W39ixjtyaEhcWSXQHtHnMBzSs474=
 github.com/go-quicktest/qt v1.102.0/go.mod h1:p4lGIVX+8Wa6ZPNDvqcxq36XpUDLh42FLetFU7odllI=

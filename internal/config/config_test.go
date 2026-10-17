@@ -296,6 +296,13 @@ rulesets:
 			wantErr: `ignore[0]: ignore pattern "a/[": syntax error in pattern`,
 		},
 		{
+			// The API endpoint is set only by --base-url, so that a config
+			// file in the repository cannot send the code elsewhere.
+			name:    "base URL",
+			input:   "version: 1\nevaluator: {base_url: \"http://localhost:8080\"}\n",
+			wantErr: "field base_url not found",
+		},
+		{
 			name:    "negative concurrency",
 			input:   "version: 1\nevaluator: {concurrency: -1}\n",
 			wantErr: "evaluator.concurrency must not be negative",

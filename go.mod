@@ -1,9 +1,9 @@
 module github.com/chez-shanpu/tastecheck
 
-go 1.27.1
+go 1.27.2
 
 require (
-	github.com/chez-shanpu/typesafeai-go v0.1.0
+	github.com/chez-shanpu/typesafeai-go v0.2.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.9
 	go.yaml.in/yaml/v3 v3.0.5
