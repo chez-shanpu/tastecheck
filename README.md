@@ -30,6 +30,8 @@ go install github.com/chez-shanpu/tastecheck@latest
 ## Usage
 
 ```sh
+# Required for the official API. Optional when --base-url points to a compatible
+# API that does not need one.
 export TYPESAFE_API_KEY=...
 
 # Evaluate all functions under the current module with .tastecheck.yaml,
@@ -59,6 +61,7 @@ skipped even when given explicitly.
 | `-o, --output`     | `text`                         | `text` or `json`                                                                                                                                       |
 | `--backend`        | `typesafeai`                   | Evaluator backend                                                                                                                                      |
 | `--model`          | backend default (`jev-latest`) | Evaluator model                                                                                                                                        |
+| `--base-url`       | backend default                | Base URL of a TypeSafe AI compatible API (official: `https://api.typesafe.ai`). `TYPESAFE_API_KEY` is optional when set                                |
 | `--concurrency`    | `4`                            | Functions evaluated in parallel                                                                                                                        |
 | `--max-retries`    | `3`                            | Retries on rate limiting, overload, or network errors (exponential backoff). `0` disables                                                              |
 | `--min-confidence` | `0`                            | Ignore a finding below its threshold when the evaluator's confidence is below this value, within `[0, 1]`. `0` disables. See [Confidence](#confidence) |

@@ -13,6 +13,9 @@ import (
 type Options struct {
 	// Model selects the backend model; empty means the backend default.
 	Model string
+	// BaseURL is the base URL of the backend API; empty means the backend
+	// default.
+	BaseURL string
 }
 
 // Factory creates an Evaluator for a backend.
