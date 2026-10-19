@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 
@@ -34,13 +35,40 @@ const language = "go"
 
 func init() {
 	evaluator.Register(BackendName, func(opts evaluator.Options) (evaluator.Evaluator, error) {
+		// Validate here rather than letting the client fail on every request.
+		if err := validateBaseURL(opts.BaseURL); err != nil {
+			return nil, fmt.Errorf("base URL: %w", err)
+		}
+		// The official API requires an API key, but a compatible API given by
+		// a base URL may not.
 		apiKey := os.Getenv(apiKeyEnvVar)
-		if apiKey == "" {
+		if apiKey == "" && opts.BaseURL == "" {
 			return nil, fmt.Errorf("%s is not set", apiKeyEnvVar)
 		}
-		client := typesafeai.NewSystemOneClient(apiKey, http.DefaultClient)
+		// An empty API key sends no Authorization header.
+		client := typesafeai.NewSystemOneClient(
+			typesafeai.WithAPIKey(apiKey),
+			typesafeai.WithBaseURL(cmp.Or(opts.BaseURL, typesafeai.DefaultBaseURL)),
+		)
 		return newEvaluator(client, opts.Model), nil
 	})
+}
+
+// validateBaseURL reports an error unless s is empty or an absolute http(s)
+// URL.
+func validateBaseURL(s string) error {
+	if s == "" {
+		return nil
+	}
+	u, err := url.Parse(s)
+	if err != nil {
+		// *url.Error already names the operation and the URL.
+		return err
+	}
+	if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return fmt.Errorf("must be an absolute http(s) URL, got %q", s)
+	}
+	return nil
 }
 
 // state is the System One request state: the code under evaluation.

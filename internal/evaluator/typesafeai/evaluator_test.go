@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
@@ -38,7 +39,7 @@ func newStubEvaluator(t *testing.T, status int, body string) (*evaluatorImpl, *[
 			Body:       io.NopCloser(strings.NewReader(body)),
 		}, nil
 	})}
-	return newEvaluator(typesafeai.NewSystemOneClient("test-key", hc), ""), &reqBody
+	return newEvaluator(typesafeai.NewSystemOneClient(typesafeai.WithAPIKey("test-key"), typesafeai.WithHTTPClient(hc)), ""), &reqBody
 }
 
 var (
@@ -224,7 +225,7 @@ func TestEvaluateConnectionError(t *testing.T) {
 	hc := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("connection refused")
 	})}
-	e := newEvaluator(typesafeai.NewSystemOneClient("test-key", hc), "")
+	e := newEvaluator(typesafeai.NewSystemOneClient(typesafeai.WithAPIKey("test-key"), typesafeai.WithHTTPClient(hc)), "")
 
 	_, err := e.Evaluate(t.Context(), subject, []evaluator.Criterion{srpScore})
 	if !errors.Is(err, evaluator.ErrTransient) {
@@ -245,5 +246,76 @@ func TestFactory(t *testing.T) {
 	}
 	if got := e.(*evaluatorImpl).model; got != "jev-custom" {
 		t.Errorf("model = %q, want jev-custom", got)
+	}
+}
+
+func TestFactoryBaseURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		apiKey   string
+		wantAuth string
+	}{
+		{name: "without API key", apiKey: "", wantAuth: ""},
+		{name: "with API key", apiKey: "key", wantAuth: "Bearer key"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotPath, gotAuth string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotPath = r.URL.Path
+				gotAuth = r.Header.Get("Authorization")
+				w.Header().Set("Content-Type", "application/json")
+				io.WriteString(w, `{"model": "jev-1", "answers": {"q0": {"type": "score", "score": 3, "confidence": 1}}}`)
+			}))
+			t.Cleanup(srv.Close)
+			t.Setenv(apiKeyEnvVar, tt.apiKey)
+
+			e, err := evaluator.New(BackendName, evaluator.Options{BaseURL: srv.URL})
+			if err != nil {
+				t.Fatalf("New() error: %v", err)
+			}
+			if _, err := e.Evaluate(t.Context(), subject, []evaluator.Criterion{srpScore}); err != nil {
+				t.Fatalf("Evaluate() error: %v", err)
+			}
+			if gotPath != "/v1/systemone" {
+				t.Errorf("path = %q, want /v1/systemone", gotPath)
+			}
+			if gotAuth != tt.wantAuth {
+				t.Errorf("Authorization = %q, want %q", gotAuth, tt.wantAuth)
+			}
+		})
+	}
+}
+
+func TestFactoryInvalidBaseURL(t *testing.T) {
+	t.Setenv(apiKeyEnvVar, "key")
+	_, err := evaluator.New(BackendName, evaluator.Options{BaseURL: "localhost:8080"})
+	if err == nil || !strings.Contains(err.Error(), `base URL: must be an absolute http(s) URL, got "localhost:8080"`) {
+		t.Errorf("New() error = %v", err)
+	}
+}
+
+func TestValidateBaseURL(t *testing.T) {
+	tests := []struct {
+		in      string
+		wantErr bool
+	}{
+		{in: ""},
+		{in: "http://localhost:8080"},
+		{in: "https://api.example.com/prefix"},
+		{in: "localhost:8080", wantErr: true},
+		{in: "ftp://example.com", wantErr: true},
+		{in: "http://", wantErr: true},
+		{in: "/v1", wantErr: true},
+		{in: "http://[::1", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			if err := validateBaseURL(tt.in); (err != nil) != tt.wantErr {
+				t.Errorf("validateBaseURL(%q) error = %v, wantErr %v", tt.in, err, tt.wantErr)
+			}
+		})
 	}
 }
