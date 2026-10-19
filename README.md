@@ -27,6 +27,23 @@ Download a prebuilt binary for Linux or macOS (amd64 / arm64) from
 go install github.com/chez-shanpu/tastecheck@latest
 ```
 
+### Agent skill
+
+[`skills/tastecheck`](skills/tastecheck/SKILL.md) is an [Agent Skill](https://agentskills.io/) that teaches a coding
+agent to run `tastecheck` as a quality gate, read the JSON report, and edit the config file. Install it with
+[`gh skill`](https://cli.github.com/manual/gh_skill):
+
+```sh
+gh skill install chez-shanpu/tastecheck tastecheck
+
+# Pin to a release (e.g. --pin vX.Y.Z), and update later.
+gh skill install chez-shanpu/tastecheck tastecheck --pin <tag>
+gh skill update --all
+```
+
+The skill is versioned with the tastecheck releases: without `--pin`, `gh skill install` takes it from the latest
+release. Install the `tastecheck` binary separately.
+
 ## Usage
 
 ```sh
@@ -394,6 +411,7 @@ make check      # vet, gofumpt/goimports diff, staticcheck, go test -race, gorel
 make build      # bin/tastecheck
 make test-e2e   # e2e tests with a mock evaluator (no API calls)
 make check-all  # check, build, and test-e2e (run in CI)
+make check-skill  # validate skills/ with `gh skill publish --dry-run` (run in CI)
 ```
 
 ## License
