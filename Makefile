@@ -56,6 +56,10 @@ test-e2e:
 check-goreleaser:
 	goreleaser check
 
+.PHONY: check-skill
+check-skill:
+	gh skill publish --dry-run
+
 .PHONY: check
 check: vet check-diff test check-goreleaser
 
