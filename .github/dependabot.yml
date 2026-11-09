@@ -1,0 +1,29 @@
+version: 2
+
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    # gofumpt, goimports, and staticcheck are `tool` dependencies, which go.mod
+    # lists as indirect requirements.
+    allow:
+      - dependency-type: all
+    groups:
+      gomod:
+        patterns:
+          - "*"
+
+  # Dependabot also regenerates .github/workflows/actions.lock in the same PR.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        patterns:
+          - "*"
