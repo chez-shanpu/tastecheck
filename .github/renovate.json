@@ -1,0 +1,37 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["github>aquaproj/aqua-renovate-config#2.14.0"],
+  "enabledManagers": ["custom.regex"],
+  "dependencyDashboard": false,
+  "minimumReleaseAge": "7 days",
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Renovate version used by .github/workflows/renovate.yaml",
+      "managerFilePatterns": ["/^\\.github/workflows/renovate\\.yaml$/"],
+      "matchStrings": ["renovate-version: (?<currentValue>\\d+\\.\\d+\\.\\d+)"],
+      "datasourceTemplate": "docker",
+      "depNameTemplate": "ghcr.io/renovatebot/renovate"
+    }
+  ],
+  "packageRules": [
+    {
+      "matchManagers": ["custom.regex"],
+      "groupName": "aqua",
+      "postUpgradeTasks": {
+        "commands": ["/tmp/aqua-root/bin/aqua update-checksum --prune"],
+        "fileFilters": ["aqua-checksums.json"],
+        "executionMode": "branch"
+      }
+    },
+    {
+      "matchDepNames": ["ghcr.io/renovatebot/renovate"],
+      "groupName": "renovate",
+      "postUpgradeTasks": {
+        "commands": [],
+        "fileFilters": [],
+        "executionMode": "update"
+      }
+    }
+  ]
+}

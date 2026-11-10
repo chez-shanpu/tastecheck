@@ -4,7 +4,7 @@ GO_FMT = $(GO) tool gofumpt
 GO_IMPORTS = $(GO) tool goimports
 STATIC_CHECK = $(GO) tool staticcheck
 AQUA = aqua
-PINACT = pinact
+GH = gh
 
 GO_VET_OPTS = -v
 GO_TEST_OPTS = -v -race
@@ -77,9 +77,13 @@ update-aqua-version:
 	  sed -i.bak "s|aqua_version: v.*|aqua_version: $$v|" .github/workflows/*.yaml && \
 	  rm -f .github/workflows/*.bak
 
-.PHONY: update-actions
-update-actions:
-	$(PINACT) run -u
+.PHONY: lock-actions
+lock-actions:
+	$(GH) actions-lock
+
+.PHONY: check-lockfile
+check-lockfile:
+	$(GH) actions-lock --verify
 
 .PHONY: update-go-tools
 update-go-tools:
@@ -87,7 +91,7 @@ update-go-tools:
 	$(GO) mod tidy
 
 .PHONY: update
-update: update-aqua update-aqua-version update-actions update-go-tools
+update: update-aqua update-aqua-version update-go-tools
 
 .PHONY: all
 all: check build

@@ -28,3 +28,7 @@ checksum:
 
 changelog:
   use: github
+
+release:
+  # Versions like v1.2.3-rc.1 are published as pre-releases, not as latest.
+  prerelease: auto

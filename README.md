@@ -412,7 +412,31 @@ make build      # bin/tastecheck
 make test-e2e   # e2e tests with a mock evaluator (no API calls)
 make check-all  # check, build, and test-e2e (run in CI)
 make check-skill  # validate skills/ with `gh skill publish --dry-run` (run in CI)
+make lock-actions    # regenerate .github/workflows/actions.lock after changing any `uses:`
+make check-lockfile  # verify actions.lock (run in CI)
 ```
+
+`lock-actions` and `check-lockfile` need the [gh-actions-lock](https://github.com/github/gh-actions-lock) extension
+(`gh extension install github/gh-actions-lock`). Workflows reference actions by tag, and `actions.lock` pins each one
+to a commit.
+
+### Dependency updates
+
+- Go modules and GitHub Actions are updated weekly by Dependabot. Action updates regenerate `actions.lock` in the same PR.
+- aqua packages, the aqua registry, and `aqua_version` in workflows are updated weekly by self-hosted Renovate (the
+  `Renovate` workflow, configured in `.github/renovate.json`), which also updates `aqua-checksums.json`. It can also
+  be run manually from the Actions tab. `make update-aqua update-aqua-version` does the same locally.
+
+### Releasing
+
+Run the `Release` workflow from the Actions tab on `main` with the version to release (e.g. `v1.2.3`). It validates
+the version, runs `make check-all`, waits for approval on the `release` environment, then pushes the tag and runs
+GoReleaser. Pushing `v*` tags by hand is blocked by a tag ruleset.
+
+A version with a pre-release suffix (e.g. `v1.2.3-rc.1`) is published as a pre-release.
+
+If GoReleaser fails after the tag is pushed, delete the GitHub release if a partial one was created, then use
+"Re-run failed jobs". The tag is reused as long as it points at the same commit; it cannot be deleted by hand.
 
 ## License
 

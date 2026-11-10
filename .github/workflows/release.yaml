@@ -1,34 +1,115 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g. v1.2.3)"
+        required: true
+        type: string
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  release:
-    name: Release
+  # Runs before the approval gate so that a bad version or a failing commit
+  # never asks for approval.
+  validate:
+    name: Validate
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
     steps:
+      - name: Validate version format
+        run: |
+          if [[ ! "${VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::version must look like v1.2.3 or v1.2.3-rc.1: ${VERSION}"
+            exit 1
+          fi
+
       - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
-          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check that the tag does not exist
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/${VERSION}" >/dev/null; then
+            echo "::error::tag ${VERSION} already exists"
+            exit 1
+          fi
 
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
 
       - name: Install aqua
-        uses: aquaproj/aqua-installer@82d0e83878a8657c4a6f2ff1755d3bfbfc67f329 # v4.1.0
+        uses: aquaproj/aqua-installer@v4.1.0
         with:
           aqua_version: v2.64.0
+
+      - name: Run tests
+        run: make check-all
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release:
+    name: Release
+    needs: validate
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: release
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      # The App is the only bypass actor of the tag ruleset, so only this job
+      # can create release tags.
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ vars.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          permission-contents: write
+
+      - name: Checkout code
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Install aqua
+        uses: aquaproj/aqua-installer@v4.1.0
+        with:
+          aqua_version: v2.64.0
+
+      # Idempotent so that "Re-run failed jobs" works after a GoReleaser failure;
+      # the tag ruleset keeps the tag from being deleted by hand.
+      - name: Create and push tag
+        run: |
+          if existing="$(git rev-parse -q --verify "refs/tags/${VERSION}^{commit}")"; then
+            if [[ "${existing}" != "${GITHUB_SHA}" ]]; then
+              echo "::error::tag ${VERSION} already exists at ${existing}, not ${GITHUB_SHA}"
+              exit 1
+            fi
+            echo "Tag ${VERSION} already exists at ${GITHUB_SHA}; reusing it."
+          else
+            git tag "${VERSION}" "${GITHUB_SHA}"
+            git push origin "refs/tags/${VERSION}"
+          fi
 
       - name: Run GoReleaser
         run: goreleaser release --clean
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
