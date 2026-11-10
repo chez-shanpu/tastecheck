@@ -50,7 +50,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Install aqua
-        uses: aquaproj/aqua-installer@v4.1.0
+        uses: aquaproj/aqua-installer@v4.1.1
         with:
           aqua_version: v2.64.0
 
@@ -90,7 +90,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Install aqua
-        uses: aquaproj/aqua-installer@v4.1.0
+        uses: aquaproj/aqua-installer@v4.1.1
         with:
           aqua_version: v2.64.0
 
