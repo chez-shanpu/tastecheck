@@ -52,7 +52,7 @@ jobs:
       - name: Install aqua
         uses: aquaproj/aqua-installer@v4.1.1
         with:
-          aqua_version: v2.64.0
+          aqua_version: v2.66.0
 
       - name: Run tests
         run: make check-all
@@ -92,7 +92,7 @@ jobs:
       - name: Install aqua
         uses: aquaproj/aqua-installer@v4.1.1
         with:
-          aqua_version: v2.64.0
+          aqua_version: v2.66.0
 
       # Idempotent so that "Re-run failed jobs" works after a GoReleaser failure;
       # the tag ruleset keeps the tag from being deleted by hand.
