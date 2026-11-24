@@ -6,16 +6,16 @@ workflows:
     '.github/workflows/release.yaml':
         - 'actions/checkout@v7.0.1'
         - 'actions/create-github-app-token@v3.3.0'
-        - 'actions/setup-go@v7.0.0'
+        - 'actions/setup-go@v7.1.0'
         - 'aquaproj/aqua-installer@v4.1.1'
     '.github/workflows/renovate.yaml':
         - 'actions/checkout@v7.0.1'
         - 'actions/create-github-app-token@v3.3.0'
         - 'aquaproj/aqua-installer@v4.1.1'
-        - 'renovatebot/github-action@v46.3.12'
+        - 'renovatebot/github-action@v46.3.14'
     '.github/workflows/test.yaml':
         - 'actions/checkout@v7.0.1'
-        - 'actions/setup-go@v7.0.0'
+        - 'actions/setup-go@v7.1.0'
         - 'aquaproj/aqua-installer@v4.1.1'
 dependencies:
     'actions/checkout@v7.0.1':
@@ -28,9 +28,9 @@ dependencies:
         commit: 'sha1-64ab729a6294000f5aa4a4bc0b73d1f32bc45510'
         owner_id: 44036562
         repo_id: 642580244
-    'actions/setup-go@v7.0.0':
-        ref: 'v7.0.0'
-        commit: 'sha1-b7ad1dad31e06c5925ef5d2fc7ad053ef454303e'
+    'actions/setup-go@v7.1.0':
+        ref: 'v7.1.0'
+        commit: 'sha1-d8cbb8045d7f43706b9177cceb36c1f91a6644d5'
         owner_id: 44036562
         repo_id: 192624594
     'aquaproj/aqua-installer@v4.1.1':
@@ -38,8 +38,8 @@ dependencies:
         commit: 'sha1-611554c6f0137ba41c8dd15aca8bee82504ea461'
         owner_id: 95116411
         repo_id: 400140776
-    'renovatebot/github-action@v46.3.12':
-        ref: 'v46.3.12'
-        commit: 'sha1-1c0cf989c02653fba0efe7ca5772338860ca71dc'
+    'renovatebot/github-action@v46.3.14':
+        ref: 'v46.3.14'
+        commit: 'sha1-acdd6bda8b035c99ce59d5675816af2aa65a1774'
         owner_id: 38656520
         repo_id: 252754603
